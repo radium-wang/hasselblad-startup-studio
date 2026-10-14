@@ -160,6 +160,7 @@ static class Tests
                 }
                 if (!OperatingSystem.IsWindows()) TestAdb(temp); else TestWindowsAdb();
                 UsbRecoveryChecks.Run(Test);
+                WindowsDeviceChecks.Run(Test);
                 TestImages(temp, image);
                 TestUi(repo, image, temp, resources, stockPath, adapter, patch);
                 Directory.CreateDirectory(Path.Combine(repo, "outputs"));

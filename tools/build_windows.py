@@ -23,18 +23,20 @@ def pe_machine(path):
 
 def package(args):
     output = args.output.resolve()
+    version = args.version or VERSION
+    assert version == VERSION or version.startswith(VERSION + '-'), 'Local build label must extend the source version'
     assert not output.exists(), 'Choose a new output directory'
-    assert f'<InformationalVersion>{VERSION}</InformationalVersion>' in (ROOT / 'windows/Studio.App/Studio.App.csproj').read_text(), 'Package / application version mismatch'
-    adapter = json.loads((args.adapter / 'adapter.json').read_text())
+    assert f'<InformationalVersion>{VERSION}</InformationalVersion>' in (ROOT / 'windows/Studio.App/Studio.App.csproj').read_text(encoding='utf-8'), 'Package / application version mismatch'
+    adapter = json.loads((args.adapter / 'adapter.json').read_text(encoding='utf-8'))
     assert adapter['mode'] == 3 and adapter['originalSHA256'] == 'a0ac02a51d87d08fa61fd0d1e79af15db248af4b5b32603b9483d09f9b7f6217'
     assert adapter['adapterSHA256'] == 'a2edfe28ad8dbf91ed19fb87526cc6eceb21ceb00a40347ee58e9afaec6929e0'
     assert len((args.adapter / 'patch.bin').read_bytes()) == sum(p['size'] for p in adapter['patches'])
     env = os.environ.copy()
     env['DOTNET_CLI_TELEMETRY_OPTOUT'] = '1'
     env['DOTNET_GENERATE_ASPNET_CERTIFICATE'] = 'false'
-    env['DOTNET_CLI_HOME'] = str(ROOT / 'outputs/windows-toolchain/home')
-    env['NUGET_PACKAGES'] = str(ROOT / 'outputs/windows-toolchain/nuget')
-    subprocess.run([str(args.dotnet.resolve()), 'publish', str(ROOT / 'windows/Studio.App/Studio.App.csproj'), '-c', 'Release', '-r', 'win-x64', '--self-contained', 'true', '--disable-build-servers', '-p:UseSharedCompilation=false', '-p:DebugType=None', '--artifacts-path', str(ROOT / 'outputs/windows-build'), '-o', str(output)], env=env, check=True)
+    env.setdefault('DOTNET_CLI_HOME', str(ROOT / 'outputs/windows-toolchain/home'))
+    env.setdefault('NUGET_PACKAGES', str(ROOT / 'outputs/windows-toolchain/nuget'))
+    subprocess.run([str(args.dotnet.resolve()), 'publish', str(ROOT / 'windows/Studio.App/Studio.App.csproj'), '-c', 'Release', '-r', 'win-x64', '--self-contained', 'true', '--disable-build-servers', '-p:UseSharedCompilation=false', '-p:DebugType=None', '-p:InformationalVersion=' + version, '--artifacts-path', str(ROOT / 'outputs/windows-build'), '-o', str(output)], env=env, check=True)
     assert pe_machine(output / 'HasselbladStartupStudio.exe') == 0x8664
     assert pe_machine(args.libusb) == 0x8664
     shutil.copyfile(args.libusb, output / 'libusb-1.0.dll')
@@ -55,8 +57,9 @@ def package(args):
     shutil.copyfile(args.adb / 'source.properties', resources / 'bin' / 'source.properties')
     shutil.copyfile(ROOT / 'LICENSE', output / 'LICENSE.txt')
     shutil.copyfile(ROOT / 'THIRD_PARTY_NOTICES.md', output / 'THIRD_PARTY_NOTICES.md')
-    guide = (ROOT / 'research/WINDOWS.md').read_text().replace('(../BUILD.md)', '(https://github.com/radium-wang/hasselblad-startup-studio/blob/main/BUILD.md)')
+    guide = (ROOT / 'research/WINDOWS.md').read_text(encoding='utf-8').replace('(../BUILD.md)', '(https://github.com/radium-wang/hasselblad-startup-studio/blob/main/BUILD.md)')
     (output / 'Windows使用与驱动说明.txt').write_text(guide, encoding='utf-8-sig')
+    (output / 'USB识别诊断.cmd').write_bytes(b'@echo off\r\ncd /d "%~dp0"\r\nstart /wait "" "%~dp0HasselbladStartupStudio.exe" --usb-diagnostics\r\nif exist "%~dp0usb-diagnostics\\result.json" (\r\n  start "" notepad.exe "%~dp0usb-diagnostics\\result.json"\r\n) else (\r\n  echo USB diagnostic report could not be created.\r\n  pause\r\n)\r\n')
     if args.licenses:
         shutil.copytree(args.licenses, output / 'Licenses')
     required = ['coreclr.dll', 'hostfxr.dll', 'HasselbladStartupStudio.dll', 'Studio.Core.dll', 'libSkiaSharp.dll', 'libHarfBuzzSharp.dll']
@@ -66,14 +69,14 @@ def package(args):
         if path.is_file():
             assert path.name not in ['original-backend.so', 'baseline.json', 'transaction.json'], 'Private backup included'
     files = {p.relative_to(output).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(output.rglob('*')) if p.is_file()}
-    (output / 'package-manifest.json').write_text(json.dumps(dict(version=VERSION, target='win-x64', deviceAccessed=False, realWindowsValidated=False, files=files), indent=2) + '\n')
+    (output / 'package-manifest.json').write_text(json.dumps(dict(version=version, target='win-x64', deviceAccessed=False, realWindowsValidated=False, files=files), indent=2) + '\n', encoding='utf-8')
     archive = Path(str(output) + '.zip')
     with zipfile.ZipFile(archive, 'w', zipfile.ZIP_DEFLATED) as z:
         for path in sorted(output.rglob('*')):
             if path.is_file():
                 z.write(path, output.name + '/' + path.relative_to(output).as_posix())
     digest = hashlib.sha256(archive.read_bytes()).hexdigest()
-    Path(str(archive) + '.sha256').write_text(digest + '  ' + archive.name + '\n')
+    Path(str(archive) + '.sha256').write_text(digest + '  ' + archive.name + '\n', encoding='utf-8')
     print('PASS Windows x64 self-contained package; real Windows USB test pending:', archive)
 
 
@@ -85,6 +88,7 @@ def main():
     p.add_argument('--adb', type=Path, required=True)
     p.add_argument('--licenses', type=Path, required=True)
     p.add_argument('--output', type=Path, required=True)
+    p.add_argument('--version', help='Optional local test label extending the source version')
     package(p.parse_args())
 
 

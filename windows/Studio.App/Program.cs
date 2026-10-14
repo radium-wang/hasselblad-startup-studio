@@ -11,6 +11,15 @@ public static class Program
 {
     [STAThread] public static void Main(string[] args)
     {
+        if (args.Contains("--usb-diagnostics"))
+        {
+            var folder = Path.Combine(AppContext.BaseDirectory, "usb-diagnostics"); Directory.CreateDirectory(folder);
+            var version = typeof(Program).Assembly.GetCustomAttributes(typeof(System.Reflection.AssemblyInformationalVersionAttribute), false)
+                .Cast<System.Reflection.AssemblyInformationalVersionAttribute>().Single().InformationalVersion.Split('+')[0];
+            try { File.WriteAllText(Path.Combine(folder, "result.json"), WindowsUsbDiagnostics.Collect(version)); }
+            catch { File.WriteAllText(Path.Combine(folder, "result.json"), JsonSerializer.Serialize(new { schema = 1, version, metadataOnly = true, cameraEndpointAccessed = false, failed = true, message = "Windows USB 设备登记读取失败，请重新运行诊断。" })); Environment.ExitCode = 1; }
+            return;
+        }
         using var mutex = new Mutex(true, "HasselbladStartupStudio-Windows", out var acquired);
         if (!acquired) return;
         BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
