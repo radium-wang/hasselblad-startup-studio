@@ -27,31 +27,38 @@ public static class Check
     }
 }
 
-public sealed record GrayImage(int Width, int Height, byte[] Pixels)
+public sealed record StartupImage(int Width, int Height, byte[] Pixels, int Channels = 1)
 {
-    public void Validate() => Check.That(Width is >= 1 and <= 1024 && Height is >= 1 and <= 768 && Pixels.Length == Width * Height, "图片宽度不得超过 1024、高度不得超过 768 像素。");
+    public void Validate() => Check.That(Width is >= 1 and <= 1024 && Height is >= 1 and <= 768 && Channels is 1 or 4 && Pixels.Length == Width * Height * Channels, "图片宽度不得超过 1024、高度不得超过 768 像素。");
     public byte[] Envelope()
     {
         Validate(); var data = new byte[32 + Pixels.Length]; Encoding.ASCII.GetBytes("X2DLOGO3").CopyTo(data, 0);
-        uint[] fields = [1, (uint)Width, (uint)Height, (uint)Pixels.Length, Check.Fnv(Pixels), 0];
+        uint[] fields = [(uint)(Channels == 4 ? 2 : 1), (uint)Width, (uint)Height, (uint)Pixels.Length, Check.Fnv(Pixels), 0];
         for (var i = 0; i < fields.Length; i++) BinaryPrimitives.WriteUInt32LittleEndian(data.AsSpan(8 + 4 * i), fields[i]);
         Pixels.CopyTo(data, 32); return data;
     }
-    public static GrayImage Decode(byte[] data)
+    public static StartupImage Decode(byte[] data)
     {
         Check.That(data.Length >= 32 && data.AsSpan(0, 8).SequenceEqual("X2DLOGO3"u8), "图片资源格式错误。");
         uint Word(int offset) => BinaryPrimitives.ReadUInt32LittleEndian(data.AsSpan(offset, 4));
-        Check.That(Word(8) == 1 && Word(28) == 0 && Word(12) is >= 1 and <= 1024 && Word(16) is >= 1 and <= 768 && Word(20) == Word(12) * Word(16) && data.Length == 32 + Word(20), "图片资源尺寸或长度不符。");
+        Check.That(Word(8) is 1 or 2 && Word(28) == 0 && Word(12) is >= 1 and <= 1024 && Word(16) is >= 1 and <= 768 && Word(20) == Word(12) * Word(16) * (Word(8) == 2 ? 4 : 1) && data.Length == 32 + Word(20), "图片资源尺寸或长度不符。");
         var pixels = data[32..]; Check.That(Check.Fnv(pixels) == Word(24), "图片资源校验失败。");
-        return new((int)Word(12), (int)Word(16), pixels);
+        return new((int)Word(12), (int)Word(16), pixels, Word(8) == 2 ? 4 : 1);
     }
-    public GrayImage Crop(int x, int y, int width, int height)
+    public StartupImage Grayscale()
+    {
+        Validate(); if (Channels == 1) return this;
+        var gray = new byte[Width * Height];
+        for (var i = 0; i < gray.Length; i++) gray[i] = (byte)((299 * Pixels[i * 4 + 2] + 587 * Pixels[i * 4 + 1] + 114 * Pixels[i * 4] + 500) / 1000);
+        return new(Width, Height, gray);
+    }
+    public StartupImage Crop(int x, int y, int width, int height)
     {
         Validate(); x = Math.Clamp(x, 0, Width - 1); y = Math.Clamp(y, 0, Height - 1);
         width = Math.Clamp(width, 1, Width - x); height = Math.Clamp(height, 1, Height - y);
-        var bytes = new byte[width * height];
-        for (var row = 0; row < height; row++) Array.Copy(Pixels, (y + row) * Width + x, bytes, row * width, width);
-        return new(width, height, bytes);
+        var bytes = new byte[width * height * Channels];
+        for (var row = 0; row < height; row++) Array.Copy(Pixels, ((y + row) * Width + x) * Channels, bytes, row * width * Channels, width * Channels);
+        return new(width, height, bytes, Channels);
     }
 }
 public sealed record PatchPart(int Offset, int Size);

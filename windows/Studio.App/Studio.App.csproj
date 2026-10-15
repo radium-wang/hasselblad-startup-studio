@@ -5,8 +5,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <AssemblyName>HasselbladStartupStudio</AssemblyName>
-    <Version>0.2.0</Version>
-    <InformationalVersion>0.2.0-preview.3</InformationalVersion>
+    <Version>0.3.0</Version>
+    <InformationalVersion>0.3.0-rgb-preview.4</InformationalVersion>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <PublishTrimmed>false</PublishTrimmed>

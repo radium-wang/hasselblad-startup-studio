@@ -11,6 +11,11 @@ internal sealed class ControllerFixture : IManagedCameraLink
     internal bool FailNextJob;
     internal bool FailNextRead;
     internal int Finished;
+    internal bool FailRestoreJob;
+    internal bool FailRestoreServices;
+    internal bool FailCleanup;
+    internal bool RestorationInterrupted;
+    internal bool ServicesFailed;
     public void Finish() => Finished++;
     public void Dispose() { }
     readonly Adapter adapter;
@@ -62,6 +67,7 @@ internal sealed class ControllerFixture : IManagedCameraLink
         if (text.StartsWith("nohup sh "))
         {
             var path = text[9..].Split(' ')[0]; var root = path[..path.LastIndexOf('/')];
+            if (FailRestoreJob && path.EndsWith("restore.sh")) { Files[root + "/result"] = "FAILED"u8.ToArray(); return "STARTED"; }
             if (FailNextJob) { FailNextJob = false; Files[root + "/result"] = "FAILED"u8.ToArray(); return "STARTED"; }
             if (path.EndsWith("install.sh"))
             {
@@ -71,13 +77,18 @@ internal sealed class ControllerFixture : IManagedCameraLink
             }
             else
             {
-                if (Files.TryGetValue(CameraPaths.Backup, out var original)) { Files[CameraPaths.Library] = original.ToArray(); Files.Remove(CameraPaths.Backup); }
+                if (Files.TryGetValue(CameraPaths.Backup, out var original)) { Files[CameraPaths.Library] = original.ToArray(); }
                 foreach (var p in new[] { CameraPaths.Mode, CameraPaths.Image, CameraPaths.ImageStage, CameraPaths.Stage }) Files.Remove(p);
+            }
+            if (path.EndsWith("restore.sh"))
+            {
+                if (FailRestoreServices) ServicesFailed = true;
+                if (RestorationInterrupted) { RestorationInterrupted = false; throw new StudioException("模拟恢复中断"); }
             }
             Files[root + "/result"] = "OK"u8.ToArray(); return "STARTED";
         }
         if (text.StartsWith("if [ -f ")) { var path = text.Split(' ')[3]; return Files.TryGetValue(path, out var result) ? Encoding.UTF8.GetString(result) : ""; }
-        if (text.StartsWith("getprop init.svc.")) return "running";
+        if (text.StartsWith("getprop init.svc.")) return ServicesFailed ? "stopped" : "running";
         if (text.StartsWith("cat /proc/mounts")) return "/dev/system /system ext4 ro,relatime 0 0";
         if (text == "pidof weston") return "123";
         if (text.Contains("/maps |")) return "10000000-11000000 r-xp 00000000 00:00 1 " + CameraPaths.Library;
@@ -88,7 +99,7 @@ internal sealed class ControllerFixture : IManagedCameraLink
         }
         if (text.StartsWith("cat ")) return Encoding.UTF8.GetString(Files[text[4..].Split(' ')[0]]);
         if (text.StartsWith("rm -rf ")) { var root = text[7..].Split(';')[0]; Roots.Remove(root); foreach (var path in Files.Keys.Where(p => p.StartsWith(root + "/")).ToArray()) Files.Remove(path); return "0"; }
-        if (text.StartsWith("rm -f ")) { Files.Remove(text[6..]); return ""; }
+        if (text.StartsWith("rm -f ")) { if (FailCleanup) throw new StudioException("模拟清理中断"); Files.Remove(text[6..]); return ""; }
         throw new Exception("Unimplemented controller fixture command: " + text);
     }
 }

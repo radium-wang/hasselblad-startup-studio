@@ -7,6 +7,7 @@ public sealed class CameraController
     public ICameraLink Link { get; }
     public Adapter Adapter { get; }
     public byte[] Patch { get; }
+    public AdapterCatalog Catalog { get; }
     public string BackupRoot { get; }
     public Action<string, double> Progress { get; set; } = (_, _) => { };
     public Action<int> Wait { get; set; } = Thread.Sleep;
@@ -15,6 +16,7 @@ public sealed class CameraController
         Link = link; BackupRoot = backupRoot;
         Adapter = Check.Decode<Adapter>(File.ReadAllBytes(Path.Combine(resources, "adapter.json")));
         Patch = File.ReadAllBytes(Path.Combine(resources, "patch.bin")); Adapter.Validate(Patch);
+        Catalog = new(resources, Adapter);
     }
     public string Call(string command, uint timeout = 12000) => Link.Command(command, timeout);
     public string Hash(string path)
@@ -67,7 +69,8 @@ public sealed class CameraController
         if (File.Exists(baseline))
         {
             var old = Check.Decode<RecoveryRecord>(File.ReadAllBytes(baseline));
-            Check.That(old.Baseline.SameBaseline(r.Baseline) && old.AdapterHash == r.AdapterHash, "已有首次恢复基线不符，禁止覆盖。");
+            Catalog.For(old); Catalog.For(r);
+            Check.That(old.Baseline.SameBaseline(r.Baseline), "已有首次恢复基线不符，禁止覆盖。");
         }
         else Check.Atomic(baseline, Check.Encode(r), false);
         if (stock != null)
@@ -83,7 +86,8 @@ public sealed class CameraController
     public void CheckHost(RecoveryRecord r)
     {
         var dir = Folder(r.Baseline); var first = Check.Decode<RecoveryRecord>(File.ReadAllBytes(Path.Combine(dir, "baseline.json")));
-        Check.That(first.Baseline.SameBaseline(r.Baseline) && first.AdapterHash == r.AdapterHash, "电脑备份与相机恢复记录不符。");
+        Catalog.For(first); Catalog.For(r);
+        Check.That(first.Baseline.SameBaseline(r.Baseline), "电脑备份与相机恢复记录不符。");
         Check.That(Check.Hash(File.ReadAllBytes(Path.Combine(dir, "original-backend.so"))) == Adapter.OriginalSHA256, "电脑原厂备份缺失或损坏。请使用原先备份所在电脑，或迁移整份备份。");
     }
     public void CheckFactory(RecoveryRecord r)
@@ -149,10 +153,10 @@ public sealed class CameraController
     }
     public (CameraSnapshot Snapshot, RecoveryRecord? Record) Inspect()
     {
-        var s = Snapshot(); Check.That(s.LibraryHash == Adapter.OriginalSHA256 || s.LibraryHash == Adapter.AdapterSHA256, "当前固件或绘图库不受支持。");
+        var s = Snapshot(); Check.That(Catalog.Recognized(s.LibraryHash), "当前固件或绘图库不受支持。");
         foreach (var p in CameraPaths.Owned) Check.That(Call("[ ! -L " + p + " ];echo $?") == "0", "检测到异常链接，禁止修改。");
         var r = Record() ?? Fallback(s);
-        if (r != null) { r.Validate(s, Adapter); CheckHost(r); }
+        if (r != null) { r.Validate(s, Catalog.For(r)); CheckHost(r); }
         else
         {
             foreach (var p in CameraPaths.Owned) Check.That(!Exists(p), "检测到未归属的旧修改文件，请使用原先电脑完成恢复。");
@@ -162,9 +166,11 @@ public sealed class CameraController
         return (s, r);
     }
     public bool HasMenuRetryGuard() => Exists("/tmp/x2d-native-menu-attempt");
-    public void Install(GrayImage image)
+    public void Install(StartupImage image)
     {
-        var envelope = image.Envelope(); var (s, old) = Inspect(); var root = MakeRoot(); RecoveryRecord r;
+        var envelope = image.Envelope(); var (s, old) = Inspect();
+        Check.That(old == null || old.AdapterHash == Adapter.AdapterSHA256, "检测到旧版灰度安装；请先使用本软件恢复原厂，再安装新版彩色画面。首次备份不会覆盖。");
+        var root = MakeRoot(); RecoveryRecord r;
         Progress("正在保存并核对首次恢复备份", 0);
         if (old != null)
         {
@@ -192,7 +198,8 @@ public sealed class CameraController
     public void Restore()
     {
         var (s, found) = Inspect(); if (found == null) return;
-        var root = MakeRoot(); var r = found with { Roots = [.. found.Roots, root] }; r.Validate(s, Adapter);
+        var restoreAdapter = Catalog.For(found);
+        var root = MakeRoot(); var r = found with { Roots = [.. found.Roots, root] }; r.Validate(s, restoreAdapter);
         SaveHost(r); MarkActive(r); CreateRoot(root, r); WriteJournal(r, root); CheckFactory(r);
         if (Exists(CameraPaths.Backup))
         {
@@ -200,7 +207,7 @@ public sealed class CameraController
         }
         else Check.That(s.LibraryHash == Adapter.OriginalSHA256, "机内原库备份缺失，已停止操作。");
         Progress("正在恢复这台相机的原厂画面", 0);
-        RunScript(Scripts.Restore(r, Adapter, root), root, "restore.sh");
+        RunScript(Scripts.Restore(r, restoreAdapter, root), root, "restore.sh");
         var restored = Snapshot(); Check.That(restored.LibraryHash == Adapter.OriginalSHA256 && restored.Metadata == r.Baseline.Metadata, "原厂库或文件属性未完全恢复。");
         CheckFactory(r); ServicesAndMapping(false);
         Check.That(Call("mount -o remount,rw /system;echo $?") == "0", "无法完成最后清理。");

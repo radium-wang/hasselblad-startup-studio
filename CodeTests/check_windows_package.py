@@ -64,6 +64,14 @@ def audit(root):
     adapter = json.loads((root / 'Resources/adapter.json').read_text())
     assert adapter['mode'] == 3 and not adapter['factoryIdentityWrite'] and not adapter['environmentWrite']
     assert len((root / 'Resources/patch.bin').read_bytes()) == sum(p['size'] for p in adapter['patches'])
+    if manifest['version'].startswith('0.3.0-rgb'):
+        assert (root / 'USB识别诊断.cmd').is_file()
+        assert adapter['adapterSHA256'] == '768b6f5d53cccbd6db90b053f1614d7de363462c4ed360ee8ffd10c0611d14ef'
+        legacy_hash = 'a2edfe28ad8dbf91ed19fb87526cc6eceb21ceb00a40347ee58e9afaec6929e0'
+        legacy_root = root / 'Resources/legacy' / legacy_hash
+        legacy = json.loads((legacy_root / 'adapter.json').read_text())
+        assert legacy['adapterSHA256'] == legacy_hash and legacy['originalSHA256'] == adapter['originalSHA256']
+        assert len((legacy_root / 'patch.bin').read_bytes()) == sum(p['size'] for p in legacy['patches'])
     licenses = root / 'Licenses'
     for name in ['Avalonia-MIT.txt', 'dotnet-MIT.txt', 'dotnet-THIRD-PARTY-NOTICES.txt', 'libusb-LGPL-2.1.txt', 'libusb-1.0.29.tar.bz2', 'SkiaSharp-LICENSE.txt', 'HarfBuzzSharp-LICENSE.txt', 'ANGLE-LICENSE.txt', 'libusb-重建说明.txt']:
         assert (licenses / name).stat().st_size > 100, 'Missing license / source material: ' + name

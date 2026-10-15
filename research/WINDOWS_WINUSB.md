@@ -10,6 +10,20 @@
 
 当前直接路径支持已登记的 WinUSB 工厂接口；不自动安装驱动，其他驱动配置的真实相机兼容性仍待验收。Mac 代码、安装/恢复脚本、固定固件门禁与首次备份保护未改变。
 
+## 单相机计数修订（未发布）
+
+preview.3 用户反馈在只接一台 X2D、原厂数据线和 4.2.0 固件时提示“请只连接一台相机”。截图不能区分触发的是物理路径、工厂路径还是 libusb 设备计数，尚没有受影响电脑的登记数据。源码中可确定的缺陷是前两项按接口路径条数计数：多个登记别名不能代表多台设备。
+
+修订使用 `SetupDiGetDeviceInterfaceDetailW` 返回的 `SP_DEVINFO_DATA.DevInst`，再用 `CM_Get_Device_IDW`、`CM_Get_Parent` 查找确切 VID/PID 的 USB 物理父设备。按物理设备实例去重，工厂路径按 MI_03 设备实例去重；实例比较忽略大小写。无法解析父设备、不同工厂实例或接口与父设备不匹配时仍拒绝访问，不用“忽略多相机检查”绕过门禁。接口消失导致关系无法读取时只在现有恢复超时边界内重试。
+
+增加每条后端的匿名数量日志；libusb 发现多个设备时仍拒绝猜测目标。诊断入口独立读取当前 USB devnode 的驱动类别及 Windows 问题码，没有相机端点、libusb 或 ADB 调用。报告不包含设备实例、序列号、设备路径、电脑用户名或完整驱动服务名。
+
+新增离线检查涵盖多个 GUID／路径、父节点和子接口别名、大小写、同型号两台相机、不同工厂 devnode、错误／未知父设备、CFV、SetupAPI x64 ABI、诊断匿名化及恢复边界。受影响 Win10／Win11 电脑上的实际连接、驱动和完整操作仍待验收。
+
+2026-10-13，本地 Windows x64：编译零警告，163 项离线检查、原生窗口启动、245 个发行文件与 ZIP 校验通过。显式诊断入口在本机无相机状态下返回零台设备并标明只读元数据；这验证了诊断入口能运行，未验证有相机时的驱动读数或受影响用户电脑。源码工具检查 3 项通过，1 项因 Windows 符号链接权限跳过。
+
+依据：[Microsoft 设备接口详情](https://learn.microsoft.com/en-us/windows/win32/api/setupapi/nf-setupapi-setupdigetdeviceinterfacedetailw)、[设备实例结构](https://learn.microsoft.com/en-us/windows/win32/api/setupapi/ns-setupapi-sp_devinfo_data)、[父设备关系](https://learn.microsoft.com/en-us/windows-hardware/drivers/install/determining-the-parent-of-a-device)。
+
 ## 已完成的验证
 
 - Windows 11 x64、.NET 10：148 项合成数据、进程替身及控件离线检查通过。新增 WinUSB ABI、错误映射、单物理相机门禁、恢复确认与界面错误保留检查。

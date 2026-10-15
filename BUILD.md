@@ -3,6 +3,8 @@
 Windows 0.2.0-preview.1 的完整构建、驱动与测试边界见 [Windows 文档](research/WINDOWS.md)。
 Windows 使用 .NET 10 / Avalonia，沿用同一模式 3 相机适配层与恢复记录格式。
 
+当前 Windows RGB 测试版需要同时生成 `--rgb` 适配层和原样历史灰度适配层，并通过 `--legacy-adapter` 打入后者。不能将 RGB 资源交给旧版 Mac 灰度读取器，完整方法与证据见 [RGB 构建及恢复说明](research/WINDOWS_RGB.md)。
+
 所有命令从本项目根目录运行。Python 3.11+；macOS 编译需要 Xcode Command Line Tools、Swift 和 clang。
 下列默认构建与测试 **不连接或修改相机**。
 

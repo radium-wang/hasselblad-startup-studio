@@ -1,5 +1,7 @@
 # Hasselblad Startup Studio
 
+当前本地 Windows 开发版为 `0.3.0-rgb-preview.4`（本地测试包“哈苏win启动RGB 0.1.1”），支持高清 PNG／JPEG、16-bit PNG 自动生成 1024×768 的 8-bit 成品，以及大区域鼠标裁切、RGB／灰度、右下角统一操作按钮与历史灰度安装恢复。左侧成品预览放大并固定在顶部，下方设置独立滚动，滚动条与菜单留出间隔。裁切框四边可独立拖动，右上角“绘制画框”可重新选取范围。下方公开下载仍为作者旧版；RGB 版尚未进行真实相机安装和冷启动验收，说明见 [RGB 迭代与恢复](research/WINDOWS_RGB.md)。
+
 ## 欢迎交流 / Discussion and contributions
 
 欢迎交流、分享研究发现和使用反馈。欢迎通过 [Issues](https://github.com/radium-wang/hasselblad-startup-studio/issues) 讨论问题与建议，也欢迎提交 [Pull Requests](https://github.com/radium-wang/hasselblad-startup-studio/pulls) 改进代码、文档和测试。
