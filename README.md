@@ -1,56 +1,112 @@
 # Hasselblad Startup Studio
 
-## 欢迎交流 / Discussion and contributions
+为第一代 **X2D 100C / 907X 与 CFV 100C（原厂固件 4.2.0）** 更换主屏开机画面。
+支持导入 PNG／JPEG、基础裁剪、原尺寸居中预览，以及首次原厂备份与恢复。
 
-欢迎交流、分享研究发现和使用反馈。欢迎通过 [Issues](https://github.com/radium-wang/hasselblad-startup-studio/issues) 讨论问题与建议，也欢迎提交 [Pull Requests](https://github.com/radium-wang/hasselblad-startup-studio/pulls) 改进代码、文档和测试。
+## 下载最新版
 
-Discussion, research findings and feedback are welcome. Please use [Issues](https://github.com/radium-wang/hasselblad-startup-studio/issues) for questions and suggestions, and submit [Pull Requests](https://github.com/radium-wang/hasselblad-startup-studio/pulls) to improve code, documentation and tests.
+**macOS / Windows 统一版本：`0.3.0-rgb-preview.5` · RGB 彩色／灰度 · 预发布测试版**
 
-## ⬇️ 下载 macOS 安装包
+| 平台 | 下载 | 系统要求 |
+| --- | --- | --- |
+| macOS | [下载 Universal ZIP](https://github.com/radium-wang/hasselblad-startup-studio/releases/download/v0.3.0-rgb-preview.5/Hasselblad-Startup-Studio-0.3.0-rgb-preview.5-macOS-Universal.zip) | macOS 13 及以上；Intel / Apple Silicon |
+| Windows | [下载 x64 ZIP](https://github.com/radium-wang/hasselblad-startup-studio/releases/download/v0.3.0-rgb-preview.5/Hasselblad-Startup-Studio-0.3.0-rgb-preview.5-Windows-x64.zip) | Intel / AMD 64 位；驱动兼容性需在用户电脑验收 |
 
-### [点击下载：macOS Universal 安装包（Intel / Apple Silicon）](https://github.com/radium-wang/hasselblad-startup-studio/releases/download/v0.1.4-cc.1/hasselblad-startup-studio-0.1.4-cc.1-macOS-Universal.zip)
+[发布说明与 SHA-256](https://github.com/radium-wang/hasselblad-startup-studio/releases/tag/v0.3.0-rgb-preview.5) · [对应源码](https://github.com/radium-wang/hasselblad-startup-studio/tree/v0.3.0-rgb-preview.5) · [RGB 实现与验证记录](https://github.com/radium-wang/hasselblad-startup-studio/blob/v0.3.0-rgb-preview.5/research/WINDOWS_RGB.md)
 
-**macOS 13 及以上 · 功能版本 0.1.4 · 许可更新包 0.1.4-cc.1 · 测试版**
+**新版 RGB 的真实相机安装、冷启动显示和恢复尚未完成验收，保留为测试版。** 普通版和大地版的首次备份保护均已保留；既有灰度版实机结果不能替代 RGB 版验收。
 
-解压 ZIP，将 **X2D Startup Studio.app** 拖入“应用程序”，然后打开即可，无需自行编译或安装 Homebrew。
-[发布说明与 SHA-256](https://github.com/radium-wang/hasselblad-startup-studio/releases/tag/v0.1.4-cc.1)。
-本包未经过 Apple 公证；首次打开如提示开发者无法验证，可按[Apple 官方说明](https://support.apple.com/zh-cn/102445)
-在“系统设置 → 隐私与安全性”中核对 App 名称后允许打开。
+### 安装与升级
 
-仅面向 **第一代 X2D 100C / 907X 与 CFV 100C 原厂 4.2.0**；各机型验证情况见下方“支持与验证”。
+- **macOS：**解压后将 **X2D Startup Studio.app** 拖入“应用程序”。无需 Homebrew；安装包未经过 Apple 公证，首次打开可按 [Apple 官方说明](https://support.apple.com/zh-cn/102445)核对 App 后允许打开。
+- **Windows：**完整解压后运行 **HasselbladStartupStudio.exe**，保留整个文件夹。无需另装 .NET、Python 或开发工具；USB 驱动说明见 [Windows 使用说明](https://github.com/radium-wang/hasselblad-startup-studio/blob/v0.3.0-rgb-preview.5/research/WINDOWS.md)。
+- **旧灰度版升级：**保留首次备份，在同一台电脑上先恢复原厂，再安装 RGB 版。新版能识别已登记的历史灰度安装并提供恢复；不要直接覆盖旧适配层。
 
-## ⬇️ 下载 Windows 测试版
+<details>
+<summary>下载旧版灰度包</summary>
 
-### [点击下载：Windows x64 测试包](https://github.com/radium-wang/hasselblad-startup-studio/releases/download/v0.2.0-preview.3/Hasselblad-Startup-Studio-0.2.0-preview.3-Windows-x64.zip)
+| 平台 | 版本 | 下载与说明 |
+| --- | --- | --- |
+| macOS Universal | 0.1.4-cc.1（功能版本 0.1.4） | [ZIP](https://github.com/radium-wang/hasselblad-startup-studio/releases/download/v0.1.4-cc.1/hasselblad-startup-studio-0.1.4-cc.1-macOS-Universal.zip) · [发布说明](https://github.com/radium-wang/hasselblad-startup-studio/releases/tag/v0.1.4-cc.1) |
+| Windows x64 | 0.2.0-preview.3 | [ZIP](https://github.com/radium-wang/hasselblad-startup-studio/releases/download/v0.2.0-preview.3/Hasselblad-Startup-Studio-0.2.0-preview.3-Windows-x64.zip) · [发布说明](https://github.com/radium-wang/hasselblad-startup-studio/releases/tag/v0.2.0-preview.3) |
 
-**0.2.0-preview.3 · Intel / AMD 64 位 · 预发布测试版**
+旧包仅支持灰度。Windows preview.3 已包含工厂 WinUSB / ADB 共存修复；更早 preview.2 的发布附件不包含该修复。旧包同样属于测试版，验证范围见各自发布说明。
 
-此前 preview.2 下载包没有包含 10 月 13 日合入的工厂 WinUSB / ADB 共存修复。preview.3 已将修复打入 Windows 包，并在窗口标题与启动日志显示版本；只读实机证据及完整安装/恢复的未验收范围见 [WinUSB 验证摘要](research/WINDOWS_WINUSB.md)。
+</details>
 
-本版修复了上一版内置 ADB 监听地址导致的启动失败，并补充真实内置 ADB 的生产启动回归。
+## 功能与图片要求
 
-完整解压后运行 **HasselbladStartupStudio.exe**，保持整个文件夹；无需另装 .NET、Python 或开发工具。
-包含灰度图片编辑、原尺寸居中预览、USB / ADB、首次备份与恢复。
+- **灰度或彩色：**preview.5 可选择 8 位灰度或 RGB 每通道 8 位；透明区域填黑。
+- **原尺寸居中：**PNG／JPEG 按方向纠正后，宽不超过 **1024**、高不超过 **768** 像素；不自动缩放，按原厂方式在 1024×768 画布中居中显示。
+- **基础裁剪：**保留原版选框、新建裁剪框、移动及四角调整；macOS 和 Windows 以 Mac 三栏布局为准。
+- **独立模式 3：**自定义画面使用 App 独立模式，保留原厂普通版／大地版身份和显示键，不提供切换机型入口。
+- **连续换图：**同一新版安装后可直接换另一张图，后续换图不覆盖首次原厂备份。
+- **恢复原厂：**使用这台相机自己的首次备份。普通版恢复原厂 H 图，大地版恢复原厂大地图；不改序列号、产品变体或原厂显示键。
 
-完整安装／恢复尚缺 Windows 实机验收；已有验证：
+当前只支持静态画面。已收到关机时短暂闪出自定义图的反馈；固件离线分析发现空界面会重新触发 Logo 绘制，preview.5 尚未修复，具体实机关机时序仍待核验。
 
-- preview.3 源码：[Windows 云端 150 项无相机检查](https://github.com/radium-wang/hasselblad-startup-studio/actions/runs/38365823264)、包内 ADB 探测、自包含 EXE 打包及原生窗口启动通过；最终 ZIP 另经本地依赖、许可、哈希与隐私检查。
-- 本地 171 项固件离线检查；原安装／恢复脚本的 50 个中断恢复点证据继续适用。
-- 最终安装包依赖、许可与隐私检查。
+## 使用与恢复
 
-**preview.3 尚未经过真实相机完整安装／恢复验收；仅在一台 X2D 上完成只读 USB／ADB 验证，仍保留为测试版。** 普通版和大地版的首次备份保护均已保留。
+1. 关闭其他占用相机 USB 的软件，连接开机的受支持相机，点击“连接相机”。
+2. 导入符合尺寸要求的图片，按需裁剪、选择灰度／彩色，并核对预览。
+3. 点击“安装自定义画面”，等待安装、读回核验与 USB 恢复完成；完整关机再开机检查。
+4. 后续可直接再安装另一张图，每次等待上一项操作完成。
+5. 需要撤回时点击“恢复原厂”，等待核验与清理完成，再关机开机并重新检测。
 
-Windows 云端执行环境为 Windows Server 2025 x64；上述检查不能代替 Windows 11 / 10 用户电脑的驱动和相机验收。
-[发布说明与 SHA-256](https://github.com/radium-wang/hasselblad-startup-studio/releases/tag/v0.2.0-preview.3) · [Windows 使用与驱动说明](research/WINDOWS.md) · [云端测试记录](https://github.com/radium-wang/hasselblad-startup-studio/actions/runs/38365823264)。
+恢复只撤回本 App 的开机图修改，不撤回其他工具的功能；不要同时使用两个工具安装或恢复。检测到扩展菜单保护提示时，按提示完整关机再开机，让菜单重新加载。
 
----
+保留首次备份与事务记录；遇到中断或校验失败，在原电脑重新连接、检测并恢复。本地备份与诊断留在 App 的私有目录，不上传到公开 Issue。原厂身份、原键、未知绘图库、恢复记录、设备归属或异常符号链接校验失败时，App 会停止操作。
 
-为第一代 **X2D 100C / 907X 与 CFV 100C 原厂 4.2.0** 更换灰度开机画面的桌面 App。
-macOS 原生版支持 macOS 13 及以上，Intel 与 Apple Silicon Universal，当前功能版本 **0.1.4**；Windows x64 测试版为 **0.2.0-preview.3**。当前源码使用 [MIT + Commons Clause 1.0](LICENSE)。
+## 支持与验证
 
-导入自己的 PNG／JPEG、选择保留黑边或裁剪、在画布内按原尺寸居中预览，然后通过 USB 安装。
-安装采用 App 独立模式 3，保留原厂普通版／大地版身份和原厂显示键；恢复使用这台相机的首次原厂备份。
-本项目是独立研究工具，与相机厂商没有隶属或背书关系。
+| 对象 | 验证范围 |
+| --- | --- |
+| 第一代普通 X2D 100C / 4.2.0 | 历史灰度版完成一次 App 安装、恢复及独立原厂状态核验；新版 RGB 完整实机流程待验收 |
+| 第一代大地 X2D 100C / 4.2.0 | 原厂身份、显示键、首次备份与恢复约束已离线验证；完整实机流程待验收 |
+| 907X / CFV 100C / 4.2.0 | 支持识别与恢复包机型约束，当前仅接受标准变体 0；显示、安装及恢复待实机验收 |
+| CFV II 50C / X2D II / 其他固件 | 不开放安装 |
+| macOS Intel / Apple Silicon | Universal 包、原生窗口及离线检查通过；真实 Intel 与 macOS 13 最低系统验收待完成 |
+| Windows | 有云端原生窗口及离线验证记录、历史只读 USB / ADB 实机证据；不同电脑的驱动及新版完整安装／恢复待验收 |
+
+preview.5 已记录 **41 项 ARM64 绘制模拟、Mac 两架构各 75 项、Windows 231 项离线检查**。范围与历史迭代见 [RGB 验证记录](https://github.com/radium-wang/hasselblad-startup-studio/blob/v0.3.0-rgb-preview.5/research/WINDOWS_RGB.md)。这些结果不等于真实相机冷启动、断电、SELinux 或 USB 故障恢复验收。
+
+<details>
+<summary>历史灰度版验证记录</summary>
+
+- 0.1.4：Mac 两架构各 69 项原生／文件系统检查，包含机型／原键基线和 50 处中断恢复；另有 29 项 ARM64 绘制模拟、20 项 C USB 替身、11 项 Swift/C 集成及 8 项 Universal 包检查。
+- Windows preview.3：[云端 150 项无相机检查及原生窗口启动](https://github.com/radium-wang/hasselblad-startup-studio/actions/runs/38365823264)、本地 171 项带固件离线检查、安装包依赖／许可／隐私检查通过。
+- 一台普通 X2D 的只读工厂接口／ADB 共存检查通过，见 [WinUSB 摘要](research/WINDOWS_WINUSB.md)。这不能代表其他机型、用户电脑或新版 RGB 完整安装／恢复已验收。
+
+</details>
+
+## 交流与贡献 / Discussion and contributions
+
+欢迎通过 [Issues](https://github.com/radium-wang/hasselblad-startup-studio/issues)反馈问题、分享研究发现，通过 [Pull Requests](https://github.com/radium-wang/hasselblad-startup-studio/pulls)改进代码、文档与测试。提交前请阅读 [CONTRIBUTING.md](CONTRIBUTING.md)。
+
+Discussion, research findings and feedback are welcome. Please use [Issues](https://github.com/radium-wang/hasselblad-startup-studio/issues) for questions and suggestions, and [Pull Requests](https://github.com/radium-wang/hasselblad-startup-studio/pulls) for contributions.
+
+## 构建与源码
+
+**RGB preview.5 的源码在 [v0.3.0-rgb-preview.5](https://github.com/radium-wang/hasselblad-startup-studio/tree/v0.3.0-rgb-preview.5)。默认分支当前保留既有灰度实现；本次首页更新不合并 RGB 功能代码。**
+
+构建请使用目标版本自己的 [RGB 构建说明](https://github.com/radium-wang/hasselblad-startup-studio/blob/v0.3.0-rgb-preview.5/BUILD.md)或本分支 [BUILD.md](BUILD.md)。原厂库、生成的补丁二进制、依赖发行包、用户图片、设备备份及原始日志不包含在源码仓库中；构建者自行准备匹配输入。
+
+默认构建和测试不访问相机；`Live*` 是单独的显式实机入口。源码隐私与链接检查：
+
+```sh
+python3 tools/check_source.py
+python3 CodeTests/check_source_tools.py
+```
+
+| 目录 | 职责 |
+| --- | --- |
+| `native/` | macOS 界面、图片处理、USB 通信、备份与恢复、相机端加载器 |
+| `windows/` | Windows 界面、图片处理、USB 通信、备份与恢复 |
+| `tools/` | 离线构建、源码隐私检查与导出 |
+| `CodeTests/` | 离线验证；`Live*` 为显式实机入口 |
+| `research/` | [架构](research/ARCHITECTURE.md)、[USB](research/USB-CONNECTION.md)、[Mac 兼容](research/MAC-COMPATIBILITY.md)、[CFV 适配](research/CFV100-ADAPTATION.md) |
+
+版本变化见 [CHANGELOG.md](CHANGELOG.md)，依赖通知见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)，安全与恢复问题见 [SECURITY.md](SECURITY.md)。本项目为独立研究工具，与相机厂商没有隶属或背书关系。
 
 ## 许可与收费边界
 
@@ -65,76 +121,4 @@ macOS 原生版支持 macOS 13 及以上，Intel 与 Apple Silicon Universal，�
 
 **旧版授权不追溯变更。** 初始提交 `2809b767992db0f3a6ca413a62035bfd79c1219f`、标签 `v0.1.4`
 及已经发布的 0.1.4 源码包仍按原 MIT 许可提供；本次变更不撤销旧副本或其后续合法再分发的 MIT 权利。
-上方的 `0.1.4-cc.1` 安装包附带完整新许可；旧 `v0.1.4` 下载包保持不变。各下载包以所附许可和对应源码修订为准。
-
-## 功能
-
-- 图片按方向纠正后要求宽不超过 1024、高不超过 768；转换为 8 位灰度，透明区域填黑，不自动缩放。
-- 左侧导入、保留黑边／自由裁剪，支持新建裁剪框、移动和拖动四角；中间按 1024×768 画布预览。
-- 顶部连接相机、底部安装／恢复，右侧只显示操作阶段和明确错误，不设复制或删除日志按钮。
-- 首次原厂备份不可被后续换图覆盖；可以直接再次安装另一张图，恢复仍回到原厂画面。
-- 普通 X2D 保留变体 0 与原厂 H 图，大地 X2D 保留变体 2 与原厂大地图；CFV 100C 当前只接受标准变体 0。
-- 不提供切换机型、写序列号、写产品变体或写原厂环境选择的入口。
-
-## 支持与验证
-
-| 对象 | 当前状态 |
-| --- | --- |
-| 第一代普通 X2D 100C / 原厂 4.2.0 | 0.1.2 普通机实际 App 安装、恢复和再次检测通过；独立只读核对原库、文件属性、原厂配置／键及自有文件清理通过 |
-| 第一代大地 X2D 100C / 原厂 4.2.0 | 身份保留、原键与恢复约束已离线验证；原厂大地机完整实机流程待验收 |
-| 907X / CFV 100C / 原厂 4.2.0 | 0.1.4 新增识别与恢复约束，固件共用依据和离线检查已完成；实际显示、安装与恢复待验收 |
-| CFV II 50C / X2D II / 其他固件 | 不开放安装 |
-| Apple Silicon | 原生窗口和离线检查通过 |
-| Intel / macOS 13 最低系统 | Universal 包检查及 x86_64 Rosetta 执行通过；真实 Intel 与最低系统验收待完成 |
-
-0.1.4 两架构各 69 项原生／文件系统检查，包含两机型共 5 种原厂键状态与 50 处中断恢复。
-另有 29 项实际 ARM64 绘制模拟、20 项 C USB 替身检查、11 项 Swift/C 集成及 8 项 Universal 包检查。
-CI 只进行源码检查；默认测试不访问设备。离线服务和文件系统替身不能替代真实 USB 断开、掉电或 SELinux 验收。
-普通 X2D 的一次成功不代表全部设备或故障下都已保证无残留。
-
-## 使用
-
-1. 关闭其他使用相机 USB 的软件，连接开机的受支持相机，点击“连接相机”。
-2. 导入符合尺寸要求的图片，选择保留黑边或裁剪，确认预览。
-3. 点击“安装自定义画面”，等待安装、读回核验与 USB 恢复完成；正常关机再开机检查画面。
-4. 后续换图可以直接再安装，无须先恢复；每次等待上一项操作完成。
-5. 点击“恢复原厂”，等待核验与清理完成，正常关机再开机并重新检测。
-
-恢复只撤回本 App 的开机图修改，不撤回其他工具的功能；不要同时用两个工具安装或恢复。
-原厂身份、原键、未知绘图库、恢复记录、设备归属或异常符号链接校验失败时停止操作。
-安装中断应保留首次备份及事务记录，在同一台 Mac 上重新连接、检查并恢复。
-本地备份位于 App 的 Application Support 私有目录；详细诊断也留在本机，不上传到公开 Issue。
-源码构建使用临时签名，未作开发者公证。
-
-## 构建与开发
-
-见 [BUILD.md](BUILD.md)。普通构建、加载器模拟、USB 替身、源码检查均为离线入口。
-原厂库、适配层／补丁二进制、依赖发行包、用户图片、设备备份和原始日志 **不包含在源码仓库中**。
-构建者自行准备匹配的原厂库与 libusb／ADB，缺少输入时不能完成可安装 App 的构建。
-
-```sh
-python3 tools/check_source.py
-python3 CodeTests/check_source_tools.py
-```
-
-上面两项只需 Python 3.11+ 标准库，不需要固件、USB 或另一 App。
-
-## 文件地图
-
-| 路径 | 职责 |
-| --- | --- |
-| `native/App.swift` | 原生界面、导入、灰度转换、裁剪、预览 |
-| `native/Core.swift` | 图片协议、原厂只读校验、首次备份、安装／恢复事务 |
-| `native/Transport.swift` | 工厂 USB 控制、ADB 大文件传输、通道恢复、私有诊断 |
-| `native/USBBridge.c` / `.h` | 两机型 USB 枚举、CRC／cookie、最终回复与错误处理 |
-| `native/loader.S` | 独立模式 3 的机内资源读取；无效资源回原厂路径 |
-| `tools/firmware_layout.py` | 本模块固件布局与门禁，不依赖旧实验 |
-| `tools/build_adapter.py` / `build_mac.py` | 离线适配层与 Universal App 构建 |
-| `tools/mac_compatibility.py` | 包架构、最低系统与动态依赖审查 |
-| `tools/check_source.py` / `export_source.py` | 源码隐私／链接审查与白名单导出 |
-| `CodeTests/` | 离线验证与合成样本；`Live*` 为单独显式实机入口 |
-| `research/` | [架构](research/ARCHITECTURE.md)、[USB](research/USB-CONNECTION.md)、[Mac 兼容](research/MAC-COMPATIBILITY.md)、[CFV 适配](research/CFV100-ADAPTATION.md) |
-| `outputs/` | 本地生成物，Git 忽略，不随源码导出 |
-
-参与贡献见 [CONTRIBUTING.md](CONTRIBUTING.md)，依赖与通知见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)，
-安全与恢复问题见 [SECURITY.md](SECURITY.md)，版本变化见 [CHANGELOG.md](CHANGELOG.md)。
+旧版 `0.1.4-cc.1` 安装包附带完整新许可；旧 `v0.1.4` 下载包保持不变。各下载包以所附许可和对应源码修订为准。
