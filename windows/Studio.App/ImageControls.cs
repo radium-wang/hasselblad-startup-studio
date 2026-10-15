@@ -22,6 +22,7 @@ public sealed class CameraPreview : Control
 public sealed class CropEditor : Control
 {
     public CropEditor() { Focusable = true; }
+    public bool BasicOnly { get; set; }
     private PhotoDocument? image; private WriteableBitmap? bitmap; private Rect crop;
     private enum DragKind { None, Move, TopLeft, TopRight, BottomLeft, BottomRight, Left, Top, Right, Bottom, Draw }
     private Point dragStart; private Rect startRect; private DragKind kind; private bool dragging, active, drawNewSelection;
@@ -68,12 +69,12 @@ public sealed class CropEditor : Control
         var nearest = corners.OrderBy(c => Distance(c.Item1)).First();
         if (Distance(nearest.Item1) <= 144) return nearest.Item2;
         // Hit the whole edge, not just its visible midpoint handle.
-        if (point.Y >= r.Top && point.Y <= r.Bottom)
+        if (!BasicOnly && point.Y >= r.Top && point.Y <= r.Bottom)
         {
             if (Math.Abs(point.X - r.Left) <= 8) return DragKind.Left;
             if (Math.Abs(point.X - r.Right) <= 8) return DragKind.Right;
         }
-        if (point.X >= r.Left && point.X <= r.Right)
+        if (!BasicOnly && point.X >= r.Left && point.X <= r.Right)
         {
             if (Math.Abs(point.Y - r.Top) <= 8) return DragKind.Top;
             if (Math.Abs(point.Y - r.Bottom) <= 8) return DragKind.Bottom;
@@ -110,13 +111,18 @@ public sealed class CropEditor : Control
         context.FillRectangle(shade, new Rect(r.Right, r.Top, Math.Max(0, f.Right - r.Right), r.Height));
         context.DrawRectangle(null, new Pen(new SolidColorBrush(Color.Parse("#DF702B")), 1.5), r);
         foreach (var p in new[] { r.TopLeft, r.TopRight, r.BottomLeft, r.BottomRight }) context.FillRectangle(Brushes.White, new Rect(p.X - 4, p.Y - 4, 8, 8));
-        foreach (var p in new[] { new Point(r.Center.X, r.Top), new Point(r.Center.X, r.Bottom) }) context.FillRectangle(Brushes.White, new Rect(p.X - 7, p.Y - 3, 14, 6));
-        foreach (var p in new[] { new Point(r.Left, r.Center.Y), new Point(r.Right, r.Center.Y) }) context.FillRectangle(Brushes.White, new Rect(p.X - 3, p.Y - 7, 6, 14));
+        if (!BasicOnly)
+        {
+            foreach (var p in new[] { new Point(r.Center.X, r.Top), new Point(r.Center.X, r.Bottom) }) context.FillRectangle(Brushes.White, new Rect(p.X - 7, p.Y - 3, 14, 6));
+            foreach (var p in new[] { new Point(r.Left, r.Center.Y), new Point(r.Right, r.Center.Y) }) context.FillRectangle(Brushes.White, new Rect(p.X - 3, p.Y - 7, 6, 14));
+        }
     }
     protected override void OnPointerPressed(PointerPressedEventArgs e)
     {
         base.OnPointerPressed(e); if (!Active || image == null || !e.GetCurrentPoint(this).Properties.IsLeftButtonPressed || Frame.Width <= 0) return;
         var point = e.GetPosition(this); kind = Hit(point);
+        if (BasicOnly && kind == DragKind.Move && crop.X <= 0 && crop.Y <= 0 && crop.Width >= image.Width && crop.Height >= image.Height) kind = DragKind.Draw;
+        if (BasicOnly && kind == DragKind.None && Frame.Contains(point)) kind = DragKind.Draw;
         // Edges and corners remain adjustable even while the draw tool is armed.
         if (DrawNewSelection && Frame.Contains(point) && kind is DragKind.None or DragKind.Move) kind = DragKind.Draw;
         if (kind == DragKind.None) return;
@@ -163,7 +169,7 @@ public sealed class CropEditor : Control
     }
     protected override void OnPointerWheelChanged(PointerWheelEventArgs e)
     {
-        base.OnPointerWheelChanged(e); if (!Active || image == null) return;
+        base.OnPointerWheelChanged(e); if (BasicOnly || !Active || image == null) return;
         ZoomSelection(Math.Pow(1.12, -Math.Clamp(e.Delta.Y, -5, 5))); e.Handled = true;
     }
 }

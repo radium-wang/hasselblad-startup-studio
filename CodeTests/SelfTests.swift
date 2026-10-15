@@ -9,12 +9,35 @@ func runSelfTests() throws {
     try require(physicalCameras("List of devices attached\nlocal device usb:1 device:eagle2_ec1706_native\n1.2.3.4:5555 device usb:2 device:eagle2_ec1706_native\nphone device usb:3 device:phone\nwaiting offline usb:4 device:eagle2_ec1706_native")==["local"],"ADB selection accepted a wireless, foreign or offline device")
     let adapter=try JSONDecoder().decode(Adapter.self,from:Data(contentsOf:resources.appendingPathComponent("adapter.json")))
     let patch=try Data(contentsOf:resources.appendingPathComponent("patch.bin"));try adapter.validate(patch)
+    try require(adapter.adapterSHA256=="768b6f5d53cccbd6db90b053f1614d7de363462c4ed360ee8ffd10c0611d14ef","RGB adapter mismatch")
+    let catalog=try AdapterCatalog(resources:resources,current:adapter)
+    try require(catalog.adapters[AdapterCatalog.legacyHash] != nil,"Legacy gray recovery adapter absent")
     let workspace=URL(fileURLWithPath:CommandLine.arguments.drop(while:{$0 != "--self-test-root"}).dropFirst().first ?? NSTemporaryDirectory()).appendingPathComponent("startup-studio-selftest-"+UUID().uuidString)
     try FileManager.default.createDirectory(at:workspace,withIntermediateDirectories:true)
     defer {try? FileManager.default.removeItem(at:workspace)}
     let stockURL=CommandLine.arguments.drop(while:{$0 != "--stock"}).dropFirst().first
     var count=0
     func pass(_ name:String) {count+=1;print("PASS",name)}
+    if let stockURL,let legacy=catalog.adapters[AdapterCatalog.legacyHash] {
+        let stock=try Data(contentsOf:URL(fileURLWithPath:stockURL))
+        let historicalPatch=try Data(contentsOf:resources.appendingPathComponent("legacy").appendingPathComponent(AdapterCatalog.legacyHash).appendingPathComponent("patch.bin"))
+        _=try legacy.apply(to:stock,patch:historicalPatch)
+        final class NoCamera:CameraLink {func command(_ text:String,timeout:UInt32) throws -> String {throw StudioError("Offline test must not use USB")}}
+        for variant in [0,2] {
+            let baseline=CameraSnapshot(factoryHash:String(repeating:variant==2 ? "a":"b",count:64),variant:variant,displayKey:variant==2 ? "KEY=Mg==\nRC=0":"KEY=MA==\nRC=0",metadata:"755 0 0 2051168 123\nu:object_r:system_file:s0",libraryHash:adapter.originalSHA256)
+            let legacyRecord=RecoveryRecord(snapshot:baseline,adapter:legacy,root:"/tmp/x2d-l3-1234abcd")
+            let installed=CameraSnapshot(factoryHash:baseline.factoryHash,variant:variant,displayKey:baseline.displayKey,metadata:baseline.metadata,libraryHash:legacy.adapterSHA256)
+            try legacyRecord.validate(installed,adapter:catalog.adapter(for:legacyRecord))
+            try require(Scripts.restore(record:legacyRecord,adapter:catalog.adapter(for:legacyRecord),root:legacyRecord.roots[0]).contains(legacy.adapterSHA256),"Historical restore would use the RGB adapter")
+            let currentRecord=RecoveryRecord(snapshot:baseline,adapter:adapter,root:"/tmp/x2d-l3-abcdef12")
+            let controller=try CameraController(link:NoCamera(),resources:resources,backupRoot:workspace.appendingPathComponent("legacy-host-\(variant)"))
+            try controller.saveHost(legacyRecord,stock:stock)
+            let baselineURL=controller.folder(baseline).appendingPathComponent("baseline.json"),first=try Data(contentsOf:baselineURL)
+            try controller.saveHost(currentRecord,stock:stock)
+            try require(try Data(contentsOf:baselineURL)==first,"Historical first backup overwritten by RGB transaction")
+            pass("historical-gray-recovery-and-immutable-baseline-\(variant)")
+        }
+    }
     pass("adb-physical-device-selection")
     for model in [CameraModel.x2d,.cfv100] {
         let pid=String(format:"0x%04X",model.usbProductID)
@@ -77,8 +100,16 @@ func runSelfTests() throws {
     try expectFailure { _=try GrayImage(width:1024,height:769,pixels:Data(count:1024*769)).envelope() };pass("oversized-height-refused")
     let crop=cropped(gray,rect:CGRect(x:1,y:1,width:17,height:13));try require(crop.width==17 && crop.height==13 && crop.pixels[0]==gray.pixels[322],"Pixel crop changed scale or coordinates");pass("crop-exact-pixels")
     let png=workspace.appendingPathComponent("test.png")
-    let rep=NSBitmapImageRep(cgImage:cgGray(gray)!);try rep.representation(using:.png,properties:[:])!.write(to:png)
-    let imported=try importGray(png);try require(imported.width==gray.width && imported.height==gray.height,"Import resized image");pass("image-import-dimensions")
+    let rep=NSBitmapImageRep(cgImage:cgStartup(gray)!);try rep.representation(using:.png,properties:[:])!.write(to:png)
+    let imported=try importStartup(png);try require(imported.width==gray.width && imported.height==gray.height && imported.channels==4,"Import resized image");pass("image-import-dimensions")
+    let rgb=GrayImage(width:2,height:1,pixels:Data([3,2,1,0,30,20,10,0]),channels:4)
+    let rgbData=try rgb.envelope(),rgbDecoded=try GrayImage.decode(rgbData)
+    try require(rgbData[8]==2 && rgbDecoded.pixels==rgb.pixels && rgbDecoded.channels==4,"RGB resource roundtrip failed");pass("rgb-resource-roundtrip")
+    try require(rgb.grayscale().pixels==Data([2,18]),"RGB to gray conversion changed pixels");pass("rgb-grayscale-conversion")
+    let rgbCrop=cropped(rgb,rect:CGRect(x:1,y:0,width:1,height:1));try require(rgbCrop.channels==4 && rgbCrop.pixels==Data([30,20,10,0]),"RGB crop changed pixels");pass("rgb-crop-exact-pixels")
+    let rgbPNG=workspace.appendingPathComponent("rgb.png")
+    let rgbRep=NSBitmapImageRep(cgImage:cgStartup(rgb)!);try rgbRep.representation(using:.png,properties:[:])!.write(to:rgbPNG)
+    let rgbImported=try importStartup(rgbPNG);try require(rgbImported.pixels==rgb.pixels,"RGB import/export changed pixels");pass("rgb-import-export-exact")
     final class LocalChunkLink:CameraLink {
         let bytes:Data;var shortened=false;var badSize=false;var chunks=0
         init(_ bytes:Data) {self.bytes=bytes}

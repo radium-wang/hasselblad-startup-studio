@@ -3,7 +3,7 @@
 Windows 0.2.0-preview.1 的完整构建、驱动与测试边界见 [Windows 文档](research/WINDOWS.md)。
 Windows 使用 .NET 10 / Avalonia，沿用同一模式 3 相机适配层与恢复记录格式。
 
-当前 Windows RGB 测试版需要同时生成 `--rgb` 适配层和原样历史灰度适配层，并通过 `--legacy-adapter` 打入后者。不能将 RGB 资源交给旧版 Mac 灰度读取器，完整方法与证据见 [RGB 构建及恢复说明](research/WINDOWS_RGB.md)。
+当前 Mac / Windows RGB 测试版需要同时生成 `--rgb` 适配层和原样历史灰度适配层，并通过 `--legacy-adapter` 打入后者。不能将 RGB 资源交给旧版灰度读取器，完整方法与证据见 [RGB 构建及恢复说明](research/WINDOWS_RGB.md)。
 
 所有命令从本项目根目录运行。Python 3.11+；macOS 编译需要 Xcode Command Line Tools、Swift 和 clang。
 下列默认构建与测试 **不连接或修改相机**。
@@ -55,12 +55,13 @@ STARTUP_ADB_LICENSE=inputs/Android-platform-tools.txt
 ## 生成适配层与 ARM64 验证
 
 ```sh
-python3 tools/build_adapter.py "$STARTUP_STOCK" outputs/adapter
+python3 tools/build_adapter.py "$STARTUP_STOCK" outputs/adapter --rgb
 python3 CodeTests/check_loader.py "$STARTUP_STOCK" outputs/adapter
+python3 tools/build_adapter.py "$STARTUP_STOCK" outputs/legacy-adapter
 ```
 
 先校验原库完整哈希，再编译 `native/loader.S`，保留原厂 H／大地资源和选择逻辑。
-适配层模拟执行实际 ARM64 指令，共 29 项，覆盖完整 framebuffer、短读、无效资源、分配失败、原厂回退及边界守卫。
+适配层模拟执行实际 ARM64 指令，共 41 项，覆盖灰度／RGB、完整 framebuffer、短读、无效资源、分配失败、原厂回退及边界守卫。
 生成 `adapter.so`、`patch.bin`、清单与报告均留在 `outputs/`，不提交。
 Unicorn 需要允许本地 JIT 的执行环境；受限环境曾出现 SIGILL，不能把模拟器启动失败视为通过。
 
@@ -69,6 +70,7 @@ Unicorn 需要允许本地 JIT 的执行环境；受限环境曾出现 SIGILL，
 ```sh
 python3 tools/build_mac.py \
   --adapter outputs/adapter \
+  --legacy-adapter outputs/legacy-adapter \
   --libusb "$STARTUP_USB_LIBRARY" --libusb-license "$STARTUP_USB_LICENSE" \
   --usb-include "$STARTUP_USB_HEADERS" \
   --adb "$STARTUP_ADB" --adb-license "$STARTUP_ADB_LICENSE"
@@ -99,7 +101,7 @@ python3 tools/mac_compatibility.py "$STARTUP_APP" --report outputs/mac-audit.jso
 python3 CodeTests/check_mac_compatibility.py "$STARTUP_APP" --report outputs/mac-rejection-tests.json
 ```
 
-每个架构 69 项原生／本地文件系统检查；包括连续安装、恢复、旧 X2D 记录兼容、跨机型拒绝和 50 处中断。
+每个架构 75 项原生／本地文件系统检查；包括 RGB 图片往返、连续安装、恢复、旧 X2D 记录兼容、跨机型拒绝和 50 处中断。
 Apple Silicon 执行 x86_64 检查需要 Rosetta；Intel 本机只能直接执行 x86_64，可分别在两种硬件执行。
 Rosetta 通过不是实际 Intel 或 macOS 13 最低系统验收。包检查覆盖 8 种正确／错误发行包条件。
 

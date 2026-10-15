@@ -231,7 +231,7 @@ static class Tests
         var png = Path.Combine(temp, "gray.png");
         Test("gray-png-export-import-exact", () => { Images.Export(image, png); var decoded = Images.Import(png); Equal(decoded.Width == image.Width && decoded.Height == image.Height && decoded.Pixels.SequenceEqual(image.Pixels)); });
         Test("rgba-black-composite", () => { using var b = new SKBitmap(2, 1); b.SetPixel(0, 0, new SKColor(255, 0, 0, 255)); b.SetPixel(1, 0, new SKColor(0, 255, 0, 0)); using var bytes = b.Encode(SKEncodedImageFormat.Png, 100); File.WriteAllBytes(png, bytes.ToArray()); var d = Images.Import(png); Equal(d.Pixels.SequenceEqual(new byte[] { 76, 0 })); });
-        Test("png-oversize-automatically-fits", () => { using var b = new SKBitmap(1025, 1); using var bytes = b.Encode(SKEncodedImageFormat.Png, 100); File.WriteAllBytes(png, bytes.ToArray()); var fitted = Images.Import(png); Equal(fitted.Width == 1024 && fitted.Height == 1); });
+        Test("png-oversize-refused-without-resizing", () => { using var b = new SKBitmap(1025, 1); using var bytes = b.Encode(SKEncodedImageFormat.Png, 100); File.WriteAllBytes(png, bytes.ToArray()); Reject(() => Images.Import(png)); });
         Test("corrupt-image-refused", () => { File.WriteAllText(png, "invalid"); Reject(() => Images.Import(png)); });
         for (var origin = 1; origin <= 8; origin++) { var o = origin; Test("exif-orientation-map-" + o, () => { var w = o >= 5 ? 2 : 3; var h = o >= 5 ? 3 : 2; var coords = new HashSet<(int, int)>(); for (var y = 0; y < h; y++) for (var x = 0; x < w; x++) { var p = Images.Orient(o, x, y, 3, 2); Equal(p.X is >= 0 and < 3 && p.Y is >= 0 and < 2); coords.Add(p); } Equal(coords.Count == 6); }); }
         using var jpegBitmap = new SKBitmap(3, 2);
@@ -255,10 +255,10 @@ static class Tests
         AppBuilder.Configure<StudioApplication>().UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = false }).UseSkia().SetupWithoutStarting();
         var window = new StudioWindow();
         Test("ui-no-auto-connect", () => Equal(!window.Install.IsEnabled && !window.Restore.IsEnabled && window.Connect.IsEnabled));
-        Test("ui-import-preview", () => { window.SetImage(image, "offline.png"); Equal(window.Preview.Image!.Pixels.SequenceEqual(Images.CameraCanvas(image).Pixels) && !window.Install.IsEnabled); });
+        Test("ui-import-preview", () => { window.SetImage(image, "offline.png"); Equal(window.Preview.Image!.Pixels.SequenceEqual(image.Pixels) && !window.Install.IsEnabled); });
         Test("preview-native-integer-centering", () => Equal(CameraPreview.CenterRect(image) == new Rect(351, 264, 321, 239)));
-        Test("ui-crop-exact", () => { window.Mode.SelectedIndex = 1; window.Editor.Crop = new Rect(1, 1, 17, 13); Equal(window.Output!.Width == 1024 && window.Output.Pixels[((768 - 13) / 2) * 1024 + (1024 - 17) / 2] == image.Pixels[322]); });
-        Test("ui-contain-reset", () => { window.Mode.SelectedIndex = 0; Equal(window.Output!.Width == 1024 && window.Output.Height == 768 && window.Output.Pixels.SequenceEqual(Images.CameraCanvas(image).Pixels)); });
+        Test("ui-crop-exact", () => { window.Mode.SelectedIndex = 1; window.Editor.Crop = new Rect(1, 1, 17, 13); Equal(window.Output!.Width == 17 && window.Output.Height == 13 && window.Output.Pixels[0] == image.Pixels[322]); });
+        Test("ui-contain-reset", () => { window.Mode.SelectedIndex = 0; Equal(window.Output!.Width == image.Width && window.Output.Height == image.Height && window.Output.Pixels.SequenceEqual(image.Pixels)); });
         Test("ui-real-controls-render", () => { window.Width = 1260; window.Height = 800; window.Show(); Dispatcher.UIThread.RunJobs(); AvaloniaHeadlessPlatform.ForceRenderTimerTick(); using var frame = window.CaptureRenderedFrame(); Equal(frame != null); frame!.Save(Path.Combine(repo, "outputs", "windows-ui-preview.png"), Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default); });
         Test("ui-real-mouse-can-move-crop", () =>
         {
@@ -270,15 +270,22 @@ static class Tests
             Equal(Math.Abs(window.Editor.Crop.X - 50) < 1 && Math.Abs(window.Editor.Crop.Y - 40) < 1); window.Mode.SelectedIndex = 0;
         });
         Test("ui-small-window-layout", () => { window.Width = 1080; window.Height = 640; Dispatcher.UIThread.RunJobs(); AvaloniaHeadlessPlatform.ForceRenderTimerTick(); var bottom = window.Install.TranslatePoint(new Point(0, window.Install.Bounds.Height), window); Equal(bottom != null && bottom.Value.Y <= window.Bounds.Height - 20 && window.Preview.Bounds.Height >= 160); using var frame = window.CaptureRenderedFrame(); Equal(frame != null); frame!.Save(Path.Combine(repo, "outputs", "windows-ui-small.png"), Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default); });
-        Test("ui-connection-button-shares-bottom-right-action-row", () =>
+        Test("ui-small-window-crop-selection-is-visible", () =>
+        {
+            window.Mode.SelectedIndex = 1; Dispatcher.UIThread.RunJobs(); AvaloniaHeadlessPlatform.ForceRenderTimerTick(); Dispatcher.UIThread.RunJobs();
+            var editor = window.Editor.TranslatePoint(default, window)!.Value; var footer = window.Install.TranslatePoint(default, window)!.Value;
+            Equal(window.Editor.Active && window.Status.Text!.Contains("已进入裁剪") && editor.Y >= 150 && editor.Y + window.Editor.Bounds.Height <= footer.Y);
+            window.Mode.SelectedIndex = 0;
+        });
+        Test("ui-connection-in-header-and-install-actions-in-footer", () =>
         {
             var connect = window.Connect.TranslatePoint(default, window)!.Value; var restore = window.Restore.TranslatePoint(default, window)!.Value; var install = window.Install.TranslatePoint(default, window)!.Value;
-            Equal(Math.Abs(connect.Y - restore.Y) < 2 && Math.Abs(connect.Y - install.Y) < 2 && connect.X < restore.X && restore.X < install.X && connect.Y > window.Bounds.Height - 100);
+            Equal(connect.Y < 100 && Math.Abs(restore.Y - install.Y) < 2 && restore.X < install.X && restore.Y > window.Bounds.Height - 100);
         });
         Test("ui-color-preview-and-grayscale-selection", () =>
         {
-            window.SetImage(RgbChecks.Colors, "rgb.png"); Equal(window.Output!.Channels == 4 && window.Preview.Image!.Pixels.SequenceEqual(Images.CameraCanvas(RgbChecks.Colors).Pixels));
-            window.Colors.SelectedIndex = 1; Equal(window.Output!.Channels == 1 && window.Output.Pixels.SequenceEqual(Images.CameraCanvas(RgbChecks.Colors.Grayscale()).Pixels));
+            window.SetImage(RgbChecks.Colors, "rgb.png"); Equal(window.Output!.Channels == 4 && window.Preview.Image!.Pixels.SequenceEqual(RgbChecks.Colors.Pixels));
+            window.Colors.SelectedIndex = 1; Equal(window.Output!.Channels == 1 && window.Output.Pixels.SequenceEqual(RgbChecks.Colors.Grayscale().Pixels));
             window.Colors.SelectedIndex = 0; window.SetImage(image, "offline.png");
         });
         Test("ui-friendly-errors", () => Equal(!StudioWindow.FriendlyFailure("LIBUSB_ERROR_TIMEOUT").Contains("LIBUSB") && StudioWindow.FriendlyFailure("LIBUSB_ERROR_IO\n自动恢复未确认").Contains("保留电脑备份")));

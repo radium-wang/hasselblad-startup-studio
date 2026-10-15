@@ -24,6 +24,8 @@ def source_files(root):
         relative = path.relative_to(root)
         if any(part in IGNORED for part in relative.parts):
             continue
+        if relative.parts[0] == 'windows' and any(part in {'bin', 'obj'} for part in relative.parts[1:]):
+            continue
         if path.is_symlink():
             raise ValueError(f'Symlink is not a source input: {relative}')
         if not path.is_file():

@@ -16,11 +16,25 @@ public static class Program
     {
         if (args.Contains("--usb-diagnostics"))
         {
-            var folder = Path.Combine(AppContext.BaseDirectory, "usb-diagnostics"); Directory.CreateDirectory(folder);
+            var folder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "X2DStartupStudio", "Logs", "usb-diagnostics");
             var version = typeof(Program).Assembly.GetCustomAttributes(typeof(System.Reflection.AssemblyInformationalVersionAttribute), false)
                 .Cast<System.Reflection.AssemblyInformationalVersionAttribute>().Single().InformationalVersion.Split('+')[0];
-            try { File.WriteAllText(Path.Combine(folder, "result.json"), WindowsUsbDiagnostics.Collect(version)); }
-            catch { File.WriteAllText(Path.Combine(folder, "result.json"), JsonSerializer.Serialize(new { schema = 1, version, metadataOnly = true, cameraEndpointAccessed = false, failed = true, message = "Windows USB 设备登记读取失败，请重新运行诊断。" })); Environment.ExitCode = 1; }
+            try
+            {
+                Directory.CreateDirectory(folder);
+                var result = WindowsUsbDiagnostics.Collect(version);
+                File.WriteAllText(Path.Combine(folder, "result.json"), result);
+            }
+            catch
+            {
+                Environment.ExitCode = 1;
+                try
+                {
+                    Directory.CreateDirectory(folder);
+                    File.WriteAllText(Path.Combine(folder, "result.json"), JsonSerializer.Serialize(new { schema = 1, version, metadataOnly = true, cameraEndpointAccessed = false, failed = true, message = "Windows USB 设备登记读取失败，请重新运行诊断。" }));
+                }
+                catch { /* A locked-down profile may also deny the per-user log directory. */ }
+            }
             return;
         }
         using var mutex = new Mutex(true, "HasselbladStartupStudio-Windows", out var acquired);
@@ -49,7 +63,6 @@ public sealed class StudioApplication : Application
                 }
                 window.SetImage(new StartupImage(640, 480, pixels, 4), "离线 RGB 测试图");
                 if (desktop.Args.Contains("--smoke-crop")) window.Mode.SelectedIndex = 1;
-                if (desktop.Args.Contains("--smoke-draw")) window.Editor.DrawNewSelection = true;
                 if (desktop.Args.Contains("--smoke-small")) { window.Width = 1080; window.Height = 640; }
                 var timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
                 timer.Tick += (_, _) =>
@@ -60,29 +73,15 @@ public sealed class StudioApplication : Application
                         Check.That(OperatingSystem.IsWindows() && window.IsVisible && window.Bounds.Width > 1000 && !window.Install.IsEnabled && !window.Restore.IsEnabled, "Windows 原生窗口启动检查失败。");
                         var bottom = window.Install.TranslatePoint(new Point(0, window.Install.Bounds.Height), window);
                         var connect = window.Connect.TranslatePoint(default, window);
-                        Check.That(bottom != null && connect != null && bottom.Value.Y <= window.Bounds.Height - 20 && connect.Value.Y > window.Bounds.Height - 120, "Windows 原生窗口底部操作按钮超出可见区域。");
-                        var thumbnail = window.GetVisualDescendants().OfType<CameraPreview>().Single(c => c.Name == "OutputThumbnail");
+                        Check.That(bottom != null && connect != null && bottom.Value.Y <= window.Bounds.Height - 20 && connect.Value.Y < 100, "Windows 原生窗口顶部连接或底部操作按钮超出可见区域。");
                         var settings = window.GetVisualDescendants().OfType<ScrollViewer>().Single(c => c.Name == "ImageSettingsScroll");
-                        var menu = window.GetVisualDescendants().OfType<StackPanel>().Single(c => c.Name == "ImageSettings");
-                        var before = thumbnail.TranslatePoint(default, window)!.Value;
-                        var settingsTop = settings.TranslatePoint(default, window)!.Value;
-                        Check.That(thumbnail.Bounds.Height >= 110 && thumbnail.Bounds.Width >= 260 && before.Y + thumbnail.Bounds.Height <= settingsTop.Y && settings.Viewport.Height >= 50, "成品预览或设置菜单被遮挡。");
-                        settings.ScrollToEnd(); window.UpdateLayout();
-                        Check.That(thumbnail.TranslatePoint(default, window) == before && settings.Offset.Y > 0, "滚动菜单移动了固定成品预览或菜单无法滚动。");
-                        var bar = settings.GetVisualDescendants().OfType<ScrollBar>().Single(b => b.Orientation == Avalonia.Layout.Orientation.Vertical);
-                        var barLeft = bar.TranslatePoint(default, window)!.Value.X;
-                        var menuRight = menu.TranslatePoint(new Point(menu.Bounds.Width, 0), window)!.Value.X;
-                        Check.That(bar.IsVisible && menuRight + 8 <= barLeft, "滚动条遮挡图片设置菜单。");
-                        if (window.Editor.IsVisible)
-                        {
-                            var button = window.DrawCrop.TranslatePoint(default, window)!.Value;
-                            var editor = window.Editor.TranslatePoint(default, window)!.Value;
-                            Check.That(window.DrawCrop.IsVisible && window.DrawCrop.IsEnabled && button.X >= editor.X && button.X + window.DrawCrop.Bounds.Width <= editor.X + window.Editor.Bounds.Width && button.Y + window.DrawCrop.Bounds.Height <= editor.Y, "自由画框按钮超出裁切单元右上角。");
-                        }
-                        if (!desktop.Args.Contains("--smoke-scroll")) { settings.ScrollToHome(); window.UpdateLayout(); }
+                        var editor = window.Editor.TranslatePoint(default, window)!.Value;
+                        var canvas = window.Preview.TranslatePoint(default, window)!.Value;
+                        Check.That(window.Editor.BasicOnly && window.Editor.IsVisible && window.Preview.IsVisible && editor.X < canvas.X && settings.Viewport.Height >= 50, "基础裁剪或相机画布预览超出布局。");
+                        if (desktop.Args.Contains("--smoke-scroll")) { settings.ScrollToEnd(); window.UpdateLayout(); Check.That(settings.Offset.Y > 0, "小窗口中的图片设置无法滚动。"); }
                         using var bitmap = new RenderTargetBitmap(new PixelSize((int)window.Bounds.Width, (int)window.Bounds.Height)); bitmap.Render(window);
                         bitmap.Save(Path.Combine(folder, "native-windows-ui.png"), PngBitmapEncoderOptions.Default);
-                        File.WriteAllText(Path.Combine(folder, "result.json"), JsonSerializer.Serialize(new { passed = true, windowsNativeUi = true, deviceAccessed = false, driverTested = false, pinnedPreview = true, menuScrollbarSeparated = true, width = window.Bounds.Width, height = window.Bounds.Height, thumbnailHeight = thumbnail.Bounds.Height })); desktop.Shutdown(0);
+                        File.WriteAllText(Path.Combine(folder, "result.json"), JsonSerializer.Serialize(new { passed = true, windowsNativeUi = true, deviceAccessed = false, driverTested = false, macLayout = true, width = window.Bounds.Width, height = window.Bounds.Height })); desktop.Shutdown(0);
                     }
                     catch (Exception e) { File.WriteAllText(Path.Combine(folder, "failure.txt"), e.Message); desktop.Shutdown(1); }
                 };

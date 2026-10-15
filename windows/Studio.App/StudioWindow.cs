@@ -15,19 +15,17 @@ public sealed class StudioWindow : Window
     public readonly Button Install = new() { Content = "安装自定义画面", Name = "Install", Padding = new Thickness(20, 12) };
     public readonly Button Restore = new() { Content = "恢复原厂", Name = "Restore", Padding = new Thickness(20, 12) };
     public readonly ComboBox Colors = new() { ItemsSource = new[] { "RGB 彩色 · 8-bit/通道", "黑白灰度 · 8-bit" }, SelectedIndex = 0, HorizontalAlignment = HorizontalAlignment.Stretch };
-    public readonly ComboBox Mode = new() { ItemsSource = new[] { "完整图片 · 自动适配", "裁切图片 · 拖动调整" }, SelectedIndex = 0, HorizontalAlignment = HorizontalAlignment.Stretch };
-    public readonly CropEditor Editor = new() { MinHeight = 160, Name = "CropEditor", IsVisible = false };
-    public readonly Button DrawCrop = new() { Content = "绘制画框", Name = "DrawCrop", IsVisible = false, Padding = new Thickness(12, 7) };
-    private readonly CameraPreview thumbnail = new() { Name = "OutputThumbnail", Height = 200 };
-    private readonly Button shrinkCrop = new() { Content = "缩小选框" }, expandCrop = new() { Content = "放大选框" };
+    public readonly ComboBox Mode = new() { ItemsSource = new[] { "保留黑边 · 原尺寸居中", "裁剪 · 原尺寸居中" }, SelectedIndex = 0, HorizontalAlignment = HorizontalAlignment.Stretch };
+    public readonly CropEditor Editor = new() { Height = 180, Name = "CropEditor", BasicOnly = true };
     public readonly CameraPreview Preview = new() { Name = "CameraPreview", MinHeight = 160 };
     public readonly TextBlock Status = new() { Text = "导入图片预览，或连接相机检查", TextWrapping = TextWrapping.Wrap, Name = "Status" };
     private readonly TextBlock device = Text("等待连接相机", 14), current = Text("尚未检测", 14), filename = Text("未导入图片", 12), dimensions = Text("1024 × 768 画布", 12);
     private readonly TextBlock note = Text("仅支持第一代 X2D 100C / 907X 与 CFV 100C，原厂固件 4.2.0。", 12);
     private readonly TextBlock logs = new() { TextWrapping = TextWrapping.Wrap, FontSize = 13, LineHeight = 22, Margin = new Thickness(0, 0, 8, 0) };
     private readonly ScrollViewer logScroll;
-    private readonly Button reset = new() { Content = "重置裁剪" }, export = new() { Content = "导出图片…" };
-    private readonly TextBlock previewTitle = Heading("相机屏幕预览"), previewHint = Text("成品 1024 × 768；等比缩小、保留黑边，小图不放大。", 12);
+    private readonly Button reset = new() { Content = "重置裁剪" }, export = new() { Content = "导出成品 PNG…" };
+    private readonly TextBlock previewTitle = Heading("相机屏幕预览"), previewHint = Text("黑色区域是屏幕画布；图片不拉伸、不放大。", 12);
+    private readonly TextBlock editorHint = Text("保留原尺寸，图片四周由相机填充黑边。", 11);
     private readonly ProgressBar progress = new() { Minimum = 0, Maximum = 1, Height = 4 };
     private readonly Queue<string> entries = new();
     private PhotoDocument? source; private StartupImage? prepared; private bool settingImage, importing; private bool busy, ready, canRestore, canInstall;
@@ -52,47 +50,46 @@ public sealed class StudioWindow : Window
         void FitClient() => layout.Height = Math.Max(0, ClientSize.Height - layout.Margin.Top - layout.Margin.Bottom);
         layout.VerticalAlignment = VerticalAlignment.Top;
         Opened += (_, _) => FitClient(); SizeChanged += (_, _) => FitClient();
-        var heading = new Grid { ColumnDefinitions = new("*,Auto") };
-        var intro = new StackPanel { Spacing = 5 }; intro.Children.Add(new TextBlock { Text = "Hasselblad Startup Studio", FontSize = 27, FontWeight = FontWeight.SemiBold }); intro.Children.Add(Text("自定义开机画面全彩windows系统测试版", 14));
-        Put(heading, intro, 0, 0); Put(layout, heading, 0, 0);
+        var heading = new Grid { ColumnDefinitions = new("Auto,*,Auto,Auto"), ColumnSpacing = 12 };
+        var icon = new Border { Width = 44, Height = 44, CornerRadius = new CornerRadius(11), Background = new SolidColorBrush(Color.Parse("#FAEADD")), Child = new TextBlock { Text = "▧", FontSize = 23, Foreground = new SolidColorBrush(Color.Parse("#D76B28")), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center } };
+        var intro = new StackPanel { Spacing = 3 }; intro.Children.Add(new TextBlock { Text = "开机画面", FontSize = 24, FontWeight = FontWeight.SemiBold }); intro.Children.Add(Text("Hasselblad X2D / 907X · CFV 100C", 12));
+        var version = new Border { Padding = new Thickness(9, 5), CornerRadius = new CornerRadius(6), Background = new SolidColorBrush(Color.Parse("#E9EAED")), VerticalAlignment = VerticalAlignment.Center, Child = Text("测试版 " + BuildVersion, 11) };
+        Connect.VerticalAlignment = VerticalAlignment.Center;
+        Put(heading, icon, 0, 0); Put(heading, intro, 0, 1); Put(heading, version, 0, 2); Put(heading, Connect, 0, 3); Put(layout, heading, 0, 0);
         var info = new Grid { ColumnDefinitions = new("*,*") }; var left = new StackPanel { Spacing = 5 }; left.Children.Add(Text("相机", 11)); left.Children.Add(device); var right = new StackPanel { Spacing = 5 }; right.Children.Add(Text("当前画面", 11)); right.Children.Add(current); Put(info, left, 0, 0); Put(info, right, 0, 1); Put(layout, Card(info), 1, 0);
-        var columns = new Grid { ColumnDefinitions = new("304,*,260"), ColumnSpacing = 16 };
-        // Keep the finished image outside the scrolling settings viewport.
-        // The fixed preview stays visible while a short window scrolls controls.
-        var imagePanel = new Grid { Name = "ImagePanel", RowDefinitions = new("Auto,*"), RowSpacing = 14 };
-        var outputPanel = new StackPanel { Spacing = 8 };
-        var outputTitle = Heading("成品预览"); outputTitle.Margin = default;
-        outputPanel.Children.Add(outputTitle); outputPanel.Children.Add(thumbnail); Put(imagePanel, outputPanel, 0, 0);
-        var editorPanel = new StackPanel { Name = "ImageSettings", Spacing = 10, Margin = new Thickness(0, 0, 12, 4) }; editorPanel.Children.Add(Import); editorPanel.Children.Add(filename); editorPanel.Children.Add(Colors); editorPanel.Children.Add(Mode);
-        var cropActions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 }; cropActions.Children.Add(shrinkCrop); cropActions.Children.Add(expandCrop); editorPanel.Children.Add(cropActions);
-        var imageActions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 }; imageActions.Children.Add(reset); imageActions.Children.Add(export); editorPanel.Children.Add(imageActions); editorPanel.Children.Add(Text("高清 PNG / JPEG 自动缩图，支持 16-bit PNG。\n拖动选框／四边／四角，右上角可绘制画框。", 12));
+        var columns = new Grid { ColumnDefinitions = new("280,*,272"), ColumnSpacing = 18 };
+        var editorPanel = new StackPanel { Name = "ImageSettings", Spacing = 11, Margin = new Thickness(0, 0, 10, 0) };
+        var imageHeading = Heading("准备图片"); imageHeading.Margin = default;
+        editorPanel.Children.Add(imageHeading); editorPanel.Children.Add(Import); editorPanel.Children.Add(filename);
+        editorPanel.Children.Add(Text("颜色", 11)); editorPanel.Children.Add(Colors);
+        editorPanel.Children.Add(Text("显示方式", 11)); editorPanel.Children.Add(Mode); editorPanel.Children.Add(Editor);
+        editorPanel.Children.Add(editorHint); editorPanel.Children.Add(reset);
+        editorPanel.Children.Add(Text("PNG／JPEG · 宽 ≤ 1024、高 ≤ 768 像素。\n按原尺寸居中，不缩放；透明区域为黑色。", 11));
         var settingsScroll = new ScrollViewer { Name = "ImageSettingsScroll", Content = editorPanel, AllowAutoHide = false, HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled, VerticalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Auto };
-        Put(imagePanel, settingsScroll, 1, 0); var imageCard = Card(imagePanel); imageCard.Padding = new Thickness(16); Put(columns, imageCard, 0, 0);
-        // Reduce only the thumbnail height when the desktop clamps the window;
-        // reserve enough room to operate the settings without covering the image.
-        imagePanel.SizeChanged += (_, _) => thumbnail.Height = Math.Clamp(imagePanel.Bounds.Height - 150, 110, 200);
+        Put(columns, Card(settingsScroll), 0, 0);
         var previewPanel = new Grid { RowDefinitions = new("Auto,*,Auto,Auto"), RowSpacing = 14 };
-        var previewHeader = new Grid { ColumnDefinitions = new("*,Auto"), ColumnSpacing = 12 };
-        previewTitle.Margin = default; previewTitle.VerticalAlignment = VerticalAlignment.Center;
-        Put(previewHeader, previewTitle, 0, 0); Put(previewHeader, DrawCrop, 0, 1); Put(previewPanel, previewHeader, 0, 0);
-        ToolTip.SetTip(DrawCrop, "点击后在原图内拖出新的裁切框，完成后自动回到调整模式；Esc 取消。四条边随时可拖动。");
-        var display = new Grid(); display.Children.Add(Preview); display.Children.Add(Editor); Put(previewPanel, display, 1, 0); Put(previewPanel, dimensions, 2, 0); Put(previewPanel, previewHint, 3, 0); Put(columns, Card(previewPanel), 0, 1);
+        previewTitle.Margin = default; Put(previewPanel, previewTitle, 0, 0);
+        Put(previewPanel, Preview, 1, 0); Put(previewPanel, dimensions, 2, 0);
+        var previewActions = new Grid { ColumnDefinitions = new("*,Auto"), ColumnSpacing = 12 };
+        Put(previewActions, previewHint, 0, 0); Put(previewActions, export, 0, 1); Put(previewPanel, previewActions, 3, 0);
+        ToolTip.SetTip(export, "导出右侧屏幕预览中的原尺寸图片；黑色区域由相机画布填充。");
+        Put(columns, Card(previewPanel), 0, 1);
         var logPanel = new Grid { RowDefinitions = new("Auto,*") }; Put(logPanel, Heading("操作日志"), 0, 0); logScroll = new ScrollViewer { Content = logs, AllowAutoHide = false, HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled }; Put(logPanel, logScroll, 1, 0); Put(columns, Card(logPanel), 0, 2); Put(layout, columns, 2, 0);
-        var footer = new Grid { ColumnDefinitions = new("*,Auto,Auto,Auto"), ColumnSpacing = 12 }; var statusPanel = new StackPanel { Spacing = 7 }; statusPanel.Children.Add(Status); statusPanel.Children.Add(note); statusPanel.Children.Add(progress); Put(footer, statusPanel, 0, 0); Put(footer, Connect, 0, 1); Put(footer, Restore, 0, 2); Install.Background = new SolidColorBrush(Color.Parse("#D76B28")); Install.Foreground = Brushes.White; Put(footer, Install, 0, 3); Put(layout, footer, 3, 0); Content = layout;
+        var footer = new Grid { ColumnDefinitions = new("*,Auto,Auto"), ColumnSpacing = 12 }; var statusPanel = new StackPanel { Spacing = 7 }; statusPanel.Children.Add(Status); statusPanel.Children.Add(note); statusPanel.Children.Add(progress); Put(footer, statusPanel, 0, 0); Put(footer, Restore, 0, 1); Install.Background = new SolidColorBrush(Color.Parse("#D76B28")); Install.Foreground = Brushes.White; Put(footer, Install, 0, 2); Put(layout, footer, 3, 0); Content = layout;
         Connect.Click += async (_, _) => await Perform(0); Install.Click += async (_, _) => await Perform(1); Restore.Click += async (_, _) => await Perform(2);
         Import.Click += async (_, _) => await ImportFile(); export.Click += async (_, _) => await ExportFile();
         Colors.SelectionChanged += (_, _) => UpdatePreview();
         Mode.SelectionChanged += (_, _) =>
         {
-            Editor.DrawNewSelection = false;
-            Editor.Active = Mode.SelectedIndex == 1 && !busy && !importing;
-            if (Editor.Active && source != null && Editor.Crop == source.FullImage) Editor.ZoomSelection(.8);
-            UpdatePreview();
+            Editor.Active = Mode.SelectedIndex == 1 && !busy && !importing; UpdatePreview();
+            editorHint.Text = Mode.SelectedIndex == 1 ? "拖动画框或四角调整范围；框外拖拽可重新框选。" : "保留原尺寸，图片四周由相机填充黑边。";
+            if (Mode.SelectedIndex == 1 && source != null)
+            {
+                Status.Text = "已进入裁剪：在左侧图片上拖动画框或四角。";
+                Dispatcher.UIThread.Post(() => Editor.BringIntoView(), DispatcherPriority.Loaded);
+            }
         };
-        Editor.ToolChanged = UpdateCropTool;
-        DrawCrop.Click += (_, _) => { Editor.DrawNewSelection = true; Editor.Focus(); };
-        Editor.Changed = _ => { if (!settingImage) UpdatePreview(); }; reset.Click += (_, _) => { Editor.DrawNewSelection = false; if (source != null) Editor.Crop = source.FullImage; };
-        shrinkCrop.Click += (_, _) => Editor.ZoomSelection(.8); expandCrop.Click += (_, _) => Editor.ZoomSelection(1.25);
+        Editor.Changed = _ => { if (!settingImage) UpdatePreview(); }; reset.Click += (_, _) => { if (source != null) Editor.Crop = source.FullImage; };
         Closed += (_, _) => { settingImage = true; Editor.Image = null; source?.Dispose(); source = null; prepared = null; };
         Closing += (_, e) => { if (busy || importing) { e.Cancel = true; Status.Text = importing ? "正在处理图片，请稍候。" : "操作进行中，请等待备份及 USB 状态核对完成。"; } };
         Log(BuildVersion + " · 已准备好，请连接相机"); UpdateButtons();
@@ -104,46 +101,34 @@ public sealed class StudioWindow : Window
         try
         {
             var previous = source; source = image;
-            try { Editor.Image = image; if (Mode.SelectedIndex == 1) Editor.Crop = new(image.Width * .1, image.Height * .1, image.Width * .8, image.Height * .8); }
+            try { Editor.Image = image; }
             catch { source = previous; if (!ReferenceEquals(previous, image)) image.Dispose(); Editor.Image = previous; throw; }
             if (!ReferenceEquals(previous, image)) previous?.Dispose();
         }
         finally { settingImage = false; }
         filename.Text = name + $"\n原图 {image.OriginalWidth} × {image.OriginalHeight} · {image.BitDepth}-bit";
-        Status.Text = "图片已准备，可直接预览或切换裁切调整位置"; UpdatePreview();
+        Status.Text = "图片已准备，按原尺寸居中预览"; UpdatePreview();
     }
     private void UpdatePreview()
     {
         if (settingImage) return;
-        prepared = source == null ? null : Images.CameraCanvas(Images.Prepare(source, Mode.SelectedIndex == 1 ? Editor.Crop : source.FullImage, Colors.SelectedIndex == 0 && !source.GrayscaleSource));
-        Preview.Image = thumbnail.Image = prepared;
-        Preview.IsVisible = Mode.SelectedIndex != 1; Editor.IsVisible = Mode.SelectedIndex == 1;
-        UpdateCropTool();
+        prepared = source == null ? null : Images.Prepare(source, Mode.SelectedIndex == 1 ? Editor.Crop : source.FullImage, Colors.SelectedIndex == 0 && !source.GrayscaleSource);
+        Preview.Image = prepared;
         var image = prepared;
-        dimensions.Text = image == null ? "1024 × 768 画布" : $"成品 1024 × 768 · {(image.Channels == 4 ? "RGB 8-bit/通道" : "8-bit 灰度")} · 已适配相机";
+        dimensions.Text = image == null ? "1024 × 768 画布" : $"图片 {image.Width} × {image.Height} · {(image.Channels == 4 ? "RGB 8-bit/通道" : "8-bit 灰度")} · 1024 × 768 画布";
         Editor.InvalidateVisual(); UpdateButtons();
-    }
-    private void UpdateCropTool()
-    {
-        var cropping = Mode.SelectedIndex == 1;
-        previewTitle.Text = cropping ? "裁切原图" : "相机屏幕预览";
-        DrawCrop.IsVisible = cropping;
-        previewHint.Text = !cropping ? "成品 1024 × 768；等比缩小、保留黑边，小图不放大。" : Editor.DrawNewSelection
-            ? "在原图内按住拖动，画出新的裁切框；Esc 取消。四边仍可调整。"
-            : "拖动框内移动；四条边可独立调整，四角可缩放；右上角可绘制画框。";
     }
     private void UpdateButtons()
     {
         var idle = !busy && !importing;
         Connect.IsEnabled = Import.IsEnabled = Colors.IsEnabled = Mode.IsEnabled = idle;
         Install.IsEnabled = idle && ready && canInstall && Output != null; Restore.IsEnabled = idle && ready && canRestore;
-        reset.IsEnabled = export.IsEnabled = idle && source != null; shrinkCrop.IsEnabled = expandCrop.IsEnabled = idle && source != null && Mode.SelectedIndex == 1; Editor.Active = idle && Mode.SelectedIndex == 1;
-        DrawCrop.IsEnabled = idle && source != null && Mode.SelectedIndex == 1;
+        reset.IsEnabled = idle && source != null && Mode.SelectedIndex == 1; export.IsEnabled = idle && source != null; Editor.Active = idle && Mode.SelectedIndex == 1;
     }
     public void Log(string message)
     {
         if (!Dispatcher.UIThread.CheckAccess()) { Dispatcher.UIThread.Post(() => Log(message)); return; }
-        entries.Enqueue(DateTime.Now.ToString("HH:mm:ss") + "  " + message); while (entries.Count > 200) entries.Dequeue(); logs.Text = string.Join("\n\n", entries); logScroll.ScrollToEnd();
+        entries.Enqueue(DateTime.Now.ToString("HH:mm:ss") + "  " + message); while (entries.Count > 200) entries.Dequeue(); logs.Text = string.Join("\n", entries); logScroll.ScrollToEnd();
     }
     private async Task ImportFile()
     {
@@ -164,7 +149,7 @@ public sealed class StudioWindow : Window
         if (Output == null) return;
         try
         {
-            var file = await StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions { Title = "导出图片", SuggestedFileName = "startup.png", DefaultExtension = "png", FileTypeChoices = [new("PNG") { Patterns = ["*.png"] }] });
+            var file = await StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions { Title = "导出成品 PNG", SuggestedFileName = "startup.png", DefaultExtension = "png", FileTypeChoices = [new("PNG") { Patterns = ["*.png"] }] });
             if (file == null) return; var path = file.TryGetLocalPath(); Check.That(path != null, "请选择本地保存位置。"); Images.Export(Output, path!); Status.Text = "PNG 图片已导出";
         }
         catch (Exception e) { Status.Text = e.Message; Log("图片导出未完成：" + e.Message); }

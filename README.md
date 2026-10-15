@@ -1,6 +1,13 @@
 # Hasselblad Startup Studio
 
-当前本地 Windows 开发版为 `0.3.0-rgb-preview.4`（本地测试包“哈苏win启动RGB 0.1.1”），支持高清 PNG／JPEG、16-bit PNG 自动生成 1024×768 的 8-bit 成品，以及大区域鼠标裁切、RGB／灰度、右下角统一操作按钮与历史灰度安装恢复。左侧成品预览放大并固定在顶部，下方设置独立滚动，滚动条与菜单留出间隔。裁切框四边可独立拖动，右上角“绘制画框”可重新选取范围。下方公开下载仍为作者旧版；RGB 版尚未进行真实相机安装和冷启动验收，说明见 [RGB 迭代与恢复](research/WINDOWS_RGB.md)。
+Mac / Windows `0.3.0-rgb-preview.5` 同时支持 RGB 与灰度，保留原版的图片尺寸限制、原尺寸居中及基础裁剪。Windows 页面以 Mac 三栏界面为准；旧灰度安装可识别并先恢复，再安装新版。两个安装包均为预发布测试版，尚未进行真实相机 RGB 安装和冷启动验收，说明见 [RGB 迭代与恢复](research/WINDOWS_RGB.md)。
+
+### RGB 测试版下载
+
+- [macOS Universal（Intel / Apple Silicon）](https://github.com/radium-wang/hasselblad-startup-studio/releases/download/v0.3.0-rgb-preview.5/Hasselblad-Startup-Studio-0.3.0-rgb-preview.5-macOS-Universal.zip)：macOS 13 及以上，本地临时签名，未经过 Apple 公证。
+- [Windows x64](https://github.com/radium-wang/hasselblad-startup-studio/releases/download/v0.3.0-rgb-preview.5/Hasselblad-Startup-Studio-0.3.0-rgb-preview.5-Windows-x64.zip)：完整解压后运行 `HasselbladStartupStudio.exe`，无需另装 .NET。
+
+请保留原机首次备份；旧灰度安装需要先在原 App 中恢复，再安装 RGB 测试版。两端安装／恢复均尚缺 RGB 实机验收。
 
 ## 欢迎交流 / Discussion and contributions
 
@@ -8,7 +15,7 @@
 
 Discussion, research findings and feedback are welcome. Please use [Issues](https://github.com/radium-wang/hasselblad-startup-studio/issues) for questions and suggestions, and submit [Pull Requests](https://github.com/radium-wang/hasselblad-startup-studio/pulls) to improve code, documentation and tests.
 
-## ⬇️ 下载 macOS 安装包
+## ⬇️ 下载旧版 macOS 安装包
 
 ### [点击下载：macOS Universal 安装包（Intel / Apple Silicon）](https://github.com/radium-wang/hasselblad-startup-studio/releases/download/v0.1.4-cc.1/hasselblad-startup-studio-0.1.4-cc.1-macOS-Universal.zip)
 
@@ -21,7 +28,7 @@ Discussion, research findings and feedback are welcome. Please use [Issues](http
 
 仅面向 **第一代 X2D 100C / 907X 与 CFV 100C 原厂 4.2.0**；各机型验证情况见下方“支持与验证”。
 
-## ⬇️ 下载 Windows 测试版
+## ⬇️ 下载旧版 Windows 测试包
 
 ### [点击下载：Windows x64 测试包](https://github.com/radium-wang/hasselblad-startup-studio/releases/download/v0.2.0-preview.3/Hasselblad-Startup-Studio-0.2.0-preview.3-Windows-x64.zip)
 
@@ -47,8 +54,8 @@ Windows 云端执行环境为 Windows Server 2025 x64；上述检查不能代替
 
 ---
 
-为第一代 **X2D 100C / 907X 与 CFV 100C 原厂 4.2.0** 更换灰度开机画面的桌面 App。
-macOS 原生版支持 macOS 13 及以上，Intel 与 Apple Silicon Universal，当前功能版本 **0.1.4**；Windows x64 测试版为 **0.2.0-preview.3**。当前源码使用 [MIT + Commons Clause 1.0](LICENSE)。
+为第一代 **X2D 100C / 907X 与 CFV 100C 原厂 4.2.0** 更换开机画面的桌面 App。
+两端 RGB 预发布测试版均为 **0.3.0-rgb-preview.5**；上方旧版下载分别为 macOS **0.1.4** 与 Windows **0.2.0-preview.3**。当前源码使用 [MIT + Commons Clause 1.0](LICENSE)。
 
 导入自己的 PNG／JPEG、选择保留黑边或裁剪、在画布内按原尺寸居中预览，然后通过 USB 安装。
 安装采用 App 独立模式 3，保留原厂普通版／大地版身份和原厂显示键；恢复使用这台相机的首次原厂备份。
@@ -71,7 +78,7 @@ macOS 原生版支持 macOS 13 及以上，Intel 与 Apple Silicon Universal，�
 
 ## 功能
 
-- 图片按方向纠正后要求宽不超过 1024、高不超过 768；转换为 8 位灰度，透明区域填黑，不自动缩放。
+- RGB 测试版图片按方向纠正后要求宽不超过 1024、高不超过 768；可选择 8 位灰度或 RGB 每通道 8 位，透明区域填黑，不自动缩放。旧版下载仍只支持灰度。
 - 左侧导入、保留黑边／自由裁剪，支持新建裁剪框、移动和拖动四角；中间按 1024×768 画布预览。
 - 顶部连接相机、底部安装／恢复，右侧只显示操作阶段和明确错误，不设复制或删除日志按钮。
 - 首次原厂备份不可被后续换图覆盖；可以直接再次安装另一张图，恢复仍回到原厂画面。

@@ -26,7 +26,7 @@ Windows 11 的 Intel / AMD 64 位电脑是首轮验收目标。Windows 10、ARM 
 
 ## Windows USB 驱动
 
-未发布的 USB 识别修订按 Windows 设备实例和物理父设备计数，合并同一工厂接口的登记别名；真正连接两台相机仍会停止。新包内可双击 `USB识别诊断.cmd`，或者运行 `HasselbladStartupStudio.exe --usb-diagnostics`。它只读取 Windows USB 登记信息，生成并打开 `usb-diagnostics/result.json`，不发送相机命令、不启动 ADB、不安装驱动。报告包含识别数量、接口编号、驱动类别和 Windows 问题码，不包含相机序列号与用户路径；连接仍失败时可将这份报告用于排查。命令行入口只生成报告，包内脚本负责打开它。
+未发布的 USB 识别修订按 Windows 设备实例和物理父设备计数，合并同一工厂接口的登记别名；真正连接两台相机仍会停止。新包内可双击 `USB识别诊断.cmd`，或者运行 `HasselbladStartupStudio.exe --usb-diagnostics`。它只读取 Windows USB 登记信息，生成 `%LOCALAPPDATA%\X2DStartupStudio\Logs\usb-diagnostics\result.json`；包内脚本会打开这份报告。不发送相机命令、不启动 ADB、不安装驱动。报告包含识别数量、接口编号、驱动类别和 Windows 问题码，不包含相机序列号与用户路径；连接仍失败时可将这份报告用于排查。
 
 当前源码新增针对已登记工厂接口的 WinUSB 直接路径，只打开 MI_03，避免与 ADB 的 MI_06 发生组合设备打开冲突。优先使用已实测的接口 GUID，其他已登记的接口 GUID 也可被发现；接口描述、单相机和固定端点均需校验通过。工厂接口短暂未就绪时按超时边界等待重连；驱动不会被自动更换。只读实机验证与未完成的完整操作验收见 [WinUSB 验证摘要](WINDOWS_WINUSB.md)。
 

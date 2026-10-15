@@ -17,20 +17,32 @@ extension Data {
     mutating func u32(_ value: UInt32) { var v = value.littleEndian; Swift.withUnsafeBytes(of: &v) { append(contentsOf: $0) } }
 }
 struct GrayImage {
-    let width: Int, height: Int, pixels: Data
+    let width: Int, height: Int, pixels: Data, channels: Int
+    init(width: Int, height: Int, pixels: Data, channels: Int = 1) {
+        self.width=width;self.height=height;self.pixels=pixels;self.channels=channels
+    }
     static func decode(_ data: Data) throws -> GrayImage {
         try require(data.count >= 32 && data.prefix(8) == Data("X2DLOGO3".utf8), "图片资源格式错误。")
         func word(_ at:Int) -> UInt32 {data[at..<at+4].enumerated().reduce(0) {$0 | UInt32($1.element)<<UInt32(8*$1.offset)}}
-        let w=Int(word(12)),h=Int(word(16))
-        try require(word(8)==1 && word(28)==0 && (1...1024).contains(w) && (1...768).contains(h) && word(20)==UInt32(w*h) && data.count==32+w*h,"图片资源尺寸或长度不符。")
+        let w=Int(word(12)),h=Int(word(16)),channels=word(8)==2 ? 4 : 1
+        try require([1,2].contains(word(8)) && word(28)==0 && (1...1024).contains(w) && (1...768).contains(h) && word(20)==UInt32(w*h*channels) && data.count==32+w*h*channels,"图片资源尺寸或长度不符。")
         let pixels=Data(data.dropFirst(32));try require(fnv(pixels)==word(24),"图片资源校验失败。")
-        return GrayImage(width:w,height:h,pixels:pixels)
+        return GrayImage(width:w,height:h,pixels:pixels,channels:channels)
     }
     func envelope() throws -> Data {
-        try require((1...1024).contains(width) && (1...768).contains(height) && pixels.count == width * height, "图片尺寸或灰度像素数据不符。")
+        try require((1...1024).contains(width) && (1...768).contains(height) && [1,4].contains(channels) && pixels.count == width * height * channels, "图片尺寸或像素数据不符。")
         var d = Data("X2DLOGO3".utf8)
-        for v in [1, UInt32(width), UInt32(height), UInt32(pixels.count), fnv(pixels), 0] { d.u32(v) }
+        for v in [UInt32(channels==4 ? 2 : 1), UInt32(width), UInt32(height), UInt32(pixels.count), fnv(pixels), 0] { d.u32(v) }
         d.append(pixels); return d
+    }
+    func grayscale() -> GrayImage {
+        if channels==1 {return self}
+        var result=Data(count:width*height)
+        for i in 0..<width*height {
+            let at=i*4
+            result[i]=UInt8((299*Int(pixels[at+2])+587*Int(pixels[at+1])+114*Int(pixels[at])+500)/1000)
+        }
+        return GrayImage(width:width,height:height,pixels:result)
     }
 }
 struct PatchPart: Codable { let offset: Int, size: Int }
@@ -49,6 +61,26 @@ struct Adapter: Codable {
         try require(digest(result) == adapterSHA256, "适配层完整校验失败。")
         return result
     }
+}
+struct AdapterCatalog {
+    static let legacyHash="a2edfe28ad8dbf91ed19fb87526cc6eceb21ceb00a40347ee58e9afaec6929e0"
+    let adapters:[String:Adapter]
+    init(resources:URL,current:Adapter) throws {
+        var found=[current.adapterSHA256:current]
+        let folder=resources.appendingPathComponent("legacy").appendingPathComponent(Self.legacyHash)
+        if FileManager.default.fileExists(atPath:folder.path) {
+            let old=try JSONDecoder().decode(Adapter.self,from:Data(contentsOf:folder.appendingPathComponent("adapter.json")))
+            try old.validate(Data(contentsOf:folder.appendingPathComponent("patch.bin")))
+            try require(old.adapterSHA256==Self.legacyHash,"历史恢复适配层清单不符。")
+            found[old.adapterSHA256]=old
+        }
+        adapters=found
+    }
+    func adapter(for record:RecoveryRecord) throws -> Adapter {
+        guard let value=adapters[record.adapterHash] else {throw StudioError("恢复包对应的历史适配层缺失，请使用原版本软件恢复；首次备份已保留。")}
+        return value
+    }
+    func recognizes(_ hash:String) -> Bool {hash==Adapter.stockHash || adapters[hash] != nil}
 }
 enum CameraPaths {
     static let library = "/system/lib64/weston/eagle-backend.so"
@@ -195,13 +227,14 @@ final class USBLink: CameraLink {
     }
 }
 final class CameraController {
-    let link: CameraLink, adapter: Adapter, patch: Data
+    let link: CameraLink, adapter: Adapter, patch: Data, catalog: AdapterCatalog
     let backupRoot: URL
     var progress: (String,Double) -> Void = {_,_ in}
     init(link: CameraLink, resources: URL, backupRoot: URL) throws {
         self.link=link;self.backupRoot=backupRoot
         adapter=try JSONDecoder().decode(Adapter.self,from:Data(contentsOf:resources.appendingPathComponent("adapter.json")))
         patch=try Data(contentsOf:resources.appendingPathComponent("patch.bin"));try adapter.validate(patch)
+        catalog=try AdapterCatalog(resources:resources,current:adapter)
     }
     func call(_ c: String, _ timeout: UInt32 = 12000) throws -> String { try link.command(c,timeout:timeout) }
     func hash(_ p: String) throws -> String {
@@ -253,7 +286,8 @@ final class CameraController {
         let baselineURL=dir.appendingPathComponent("baseline.json"),stockURL=dir.appendingPathComponent("original-backend.so")
         if FileManager.default.fileExists(atPath:baselineURL.path) {
             let old=try JSONDecoder().decode(RecoveryRecord.self,from:Data(contentsOf:baselineURL))
-            try require(old.baseline == record.baseline && old.adapterHash == record.adapterHash,"已有首次恢复基线不符，禁止覆盖。")
+            _=try catalog.adapter(for:old);_=try catalog.adapter(for:record)
+            try require(old.baseline == record.baseline,"已有首次恢复基线不符，禁止覆盖。")
         } else {
             try JSONEncoder().encode(record).write(to:baselineURL,options:.atomic)
             try FileManager.default.setAttributes([.posixPermissions:0o600],ofItemAtPath:baselineURL.path)
@@ -276,7 +310,8 @@ final class CameraController {
     func checkHost(_ record: RecoveryRecord) throws {
         let dir=folder(record.baseline)
         let old=try JSONDecoder().decode(RecoveryRecord.self,from:Data(contentsOf:dir.appendingPathComponent("baseline.json")))
-        try require(old.baseline==record.baseline && old.adapterHash==record.adapterHash,"电脑备份与相机恢复记录不符。")
+        _=try catalog.adapter(for:old);_=try catalog.adapter(for:record)
+        try require(old.baseline==record.baseline,"电脑备份与相机恢复记录不符。")
         try require(digest(Data(contentsOf:dir.appendingPathComponent("original-backend.so")))==adapter.originalSHA256,"电脑原厂备份缺失或损坏。")
     }
     func checkFactory(_ record: RecoveryRecord) throws {
@@ -356,16 +391,17 @@ final class CameraController {
         }
     }
     func inspect() throws -> (CameraSnapshot,RecoveryRecord?) {
-        let s=try snapshot();try require(s.libraryHash==adapter.originalSHA256 || s.libraryHash==adapter.adapterSHA256,"当前固件或绘图库不受支持。")
+        let s=try snapshot();try require(catalog.recognizes(s.libraryHash),"当前固件或绘图库不受支持。")
         for p in CameraPaths.owned { try require(try call("[ ! -L " + p + " ];echo $?") == "0", "检测到异常链接，禁止修改。") }
         let r=try record() ?? fallbackRecord(s)
-        if let r { try r.validate(s,adapter:adapter);try checkHost(r) }
+        if let r { try r.validate(s,adapter:catalog.adapter(for:r));try checkHost(r) }
         else { for p in CameraPaths.owned { try require(try !exists(p),"检测到未归属的旧修改文件，需先完成原试验恢复。") };try require(s.libraryHash==adapter.originalSHA256,"缺少这台相机的恢复记录。") }
         if r == nil && FileManager.default.fileExists(atPath:folder(s).appendingPathComponent("original-backend.so").path) {try servicesAndMapping(false)}
         return (s,r)
     }
     func install(_ image: GrayImage) throws {
         let envelope=try image.envelope(),(s,old)=try inspect()
+        try require(old == nil || old!.adapterHash==adapter.adapterSHA256,"检测到旧版灰度安装；请先使用本软件恢复原厂，再安装新版彩色画面。首次备份不会覆盖。")
         progress("正在保存并核对首次恢复备份",0)
         let root=try makeRoot()
         var r:RecoveryRecord
@@ -399,13 +435,14 @@ final class CameraController {
     func restore() throws {
         let (s,optional)=try inspect()
         guard var r=optional else { try require(s.libraryHash==adapter.originalSHA256,"缺少恢复记录。");return }
-        let root=try makeRoot();r.roots.append(root);try saveHost(r);try markActive(r);try createRoot(root,record:r);try writeJournal(r,root:root);try checkFactory(r)
+        let restoreAdapter=try catalog.adapter(for:r)
+        let root=try makeRoot();r.roots.append(root);try r.validate(s,adapter:restoreAdapter);try saveHost(r);try markActive(r);try createRoot(root,record:r);try writeJournal(r,root:root);try checkFactory(r)
         if try exists(CameraPaths.backup) {
             if try hash(CameraPaths.backup) != adapter.originalSHA256 {try require(s.libraryHash==adapter.originalSHA256 && s.metadata==r.baseline.metadata,"原厂备份哈希不符，禁止恢复。")}
         }
         else { try require(s.libraryHash==adapter.originalSHA256,"机内原库备份缺失，已停止操作。") }
         progress("正在恢复这台相机的原厂画面",0)
-        try runScript(Scripts.restore(record:r,adapter:adapter,root:root),root:root,name:"restore.sh")
+        try runScript(Scripts.restore(record:r,adapter:restoreAdapter,root:root),root:root,name:"restore.sh")
         let restored=try snapshot();try require(restored.libraryHash==adapter.originalSHA256 && restored.metadata==r.baseline.metadata,"原厂库或文件属性未完全恢复。")
         try checkFactory(r);try servicesAndMapping(false)
         // The original has been loaded and validated before removing the recovery record.

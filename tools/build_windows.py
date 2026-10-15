@@ -10,7 +10,7 @@ import zipfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-VERSION = '0.3.0-rgb-preview.4'
+VERSION = '0.3.0-rgb-preview.5'
 
 
 def pe_machine(path):
@@ -68,7 +68,7 @@ def package(args):
     shutil.copyfile(ROOT / 'THIRD_PARTY_NOTICES.md', output / 'THIRD_PARTY_NOTICES.md')
     guide = (ROOT / 'research/WINDOWS.md').read_text(encoding='utf-8').replace('(../BUILD.md)', '(https://github.com/radium-wang/hasselblad-startup-studio/blob/main/BUILD.md)')
     (output / 'Windows使用与驱动说明.txt').write_text(guide, encoding='utf-8-sig')
-    (output / 'USB识别诊断.cmd').write_bytes(b'@echo off\r\ncd /d "%~dp0"\r\nstart /wait "" "%~dp0HasselbladStartupStudio.exe" --usb-diagnostics\r\nif exist "%~dp0usb-diagnostics\\result.json" (\r\n  start "" notepad.exe "%~dp0usb-diagnostics\\result.json"\r\n) else (\r\n  echo USB diagnostic report could not be created.\r\n  pause\r\n)\r\n')
+    (output / 'USB识别诊断.cmd').write_bytes(b'@echo off\r\ncd /d "%~dp0"\r\nset "REPORT=%LOCALAPPDATA%\\X2DStartupStudio\\Logs\\usb-diagnostics\\result.json"\r\nif exist "%REPORT%" del /q "%REPORT%"\r\nstart /wait "" "%~dp0HasselbladStartupStudio.exe" --usb-diagnostics\r\nif errorlevel 1 (\r\n  echo USB diagnostic run failed; no current report is available.\r\n  pause\r\n  exit /b 1\r\n)\r\nif exist "%REPORT%" (\r\n  start "" notepad.exe "%REPORT%"\r\n) else (\r\n  echo USB diagnostic report could not be created.\r\n  pause\r\n)\r\n')
     if args.licenses:
         shutil.copytree(args.licenses, output / 'Licenses')
     required = ['coreclr.dll', 'hostfxr.dll', 'HasselbladStartupStudio.dll', 'Studio.Core.dll', 'libSkiaSharp.dll', 'libHarfBuzzSharp.dll']
