@@ -28,6 +28,8 @@ def main():
             raise AssertionError(name+' 未拒绝错误的包')
         for name,relative in [('missing-adb','Contents/Resources/bin/adb'),('missing-usb-library','Contents/Frameworks/libusb-1.0.0.dylib')]:
             reset();(target/relative).unlink();refused(name)
+        reset();(target/'Contents/Resources/AppIcon.icns').unlink();refused('missing-app-icon')
+        reset();info=target/'Contents/Info.plist';data=plistlib.loads(info.read_bytes());data['CFBundleIconFile']='OtherIcon';info.write_bytes(plistlib.dumps(data));refused('unregistered-app-icon')
         for name,relative in [('thin-main-program','Contents/MacOS/StartupStudio'),('thin-adb','Contents/Resources/bin/adb'),('thin-usb-library','Contents/Frameworks/libusb-1.0.0.dylib')]:
             reset();binary=target/relative;thin=Path(temporary)/'thin'
             subprocess.run(['lipo',str(binary),'-thin','arm64','-output',str(thin)],check=True)

@@ -18,6 +18,8 @@ def main():
  app=a.output/'X2D Startup Studio.app';contents=app/'Contents';binpath=contents/'MacOS';resources=contents/'Resources';frameworks=contents/'Frameworks'
  for folder in (binpath,resources,frameworks):folder.mkdir(parents=True,exist_ok=True)
  for name in ('patch.bin','adapter.json'):shutil.copy2(a.adapter/name,resources/name)
+ shutil.copy2(ROOT/'assets/app-icon/AppIcon.icns',resources/'AppIcon.icns')
+ shutil.copy2(ROOT/'assets/app-icon/AppIcon.png',resources/'AppIcon.png')
  historical=resources/'legacy'/legacy['adapterSHA256'];historical.mkdir(parents=True,exist_ok=True)
  for name in ('patch.bin','adapter.json'):shutil.copy2(a.legacy_adapter/name,historical/name)
  for name in ('LICENSE','THIRD_PARTY_NOTICES.md'):shutil.copy2(ROOT/name,resources/name)
@@ -45,7 +47,7 @@ def main():
   dep=line.strip().split(' (')[0]
   if 'libusb' in dep and not dep.startswith('@rpath'):
    subprocess.run(['install_name_tool','-change',dep,'@rpath/libusb-1.0.0.dylib',str(binpath/'StartupStudio')],check=True)
- info=dict(CFBundleName='X2D Startup Studio',CFBundleDisplayName='X2D / 907X 开机画面',CFBundleIdentifier='local.x2d.startupstudio',CFBundleVersion='6',CFBundleShortVersionString='0.3.0',CFBundleGetInfoString=VERSION,CFBundleExecutable='StartupStudio',CFBundlePackageType='APPL',LSMinimumSystemVersion=MINIMUM_MACOS,NSHighResolutionCapable=True,NSUSBUsageDescription='通过 USB 检查相机、安装自定义开机画面及恢复首次原厂备份。')
+ info=dict(CFBundleName='X2D Startup Studio',CFBundleDisplayName='X2D / 907X 开机画面',CFBundleIdentifier='local.x2d.startupstudio',CFBundleVersion='6',CFBundleShortVersionString='0.3.0',CFBundleGetInfoString=VERSION,CFBundleExecutable='StartupStudio',CFBundleIconFile='AppIcon',CFBundlePackageType='APPL',LSMinimumSystemVersion=MINIMUM_MACOS,NSHighResolutionCapable=True,NSUSBUsageDescription='通过 USB 检查相机、安装自定义开机画面及恢复首次原厂备份。')
  (contents/'Info.plist').write_bytes(plistlib.dumps(info))
  subprocess.run(['codesign','--force','--sign','-',str(frameworks/'libusb-1.0.0.dylib')],check=True)
  subprocess.run(['codesign','--force','--sign','-',str(resources/'bin/adb')],check=True)

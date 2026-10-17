@@ -38,12 +38,59 @@ def pe(path):
     return machine, imports
 
 
+def group_icon_count(path):
+    data = path.read_bytes()
+    pe_at = struct.unpack_from('<I', data, 0x3c)[0]
+    optional = pe_at + 24
+    magic = struct.unpack_from('<H', data, optional)[0]
+    directory = optional + (112 if magic == 0x20b else 96)
+    resource_rva, resource_size = struct.unpack_from('<II', data, directory + 16)
+    assert resource_rva and resource_size, 'Missing PE resource directory'
+    sections = struct.unpack_from('<H', data, pe_at + 6)[0]
+    optional_size = struct.unpack_from('<H', data, pe_at + 20)[0]
+    table = optional + optional_size
+    mappings = []
+    for index in range(sections):
+        start = table + index * 40
+        virtual_size, virtual_address, raw_size, raw_at = struct.unpack_from('<IIII', data, start + 8)
+        mappings.append((virtual_address, max(virtual_size, raw_size), raw_at))
+    def offset(rva):
+        for start, size, raw_at in mappings:
+            if start <= rva < start + size:
+                return raw_at + rva - start
+        raise AssertionError('Unmapped PE resource RVA')
+    base = offset(resource_rva)
+    def entries(relative):
+        at = base + relative
+        named, ids = struct.unpack_from('<HH', data, at + 12)
+        return [(struct.unpack_from('<II', data, at + 16 + 8 * i)) for i in range(named + ids)]
+    icon_groups = 0
+    for name, child in entries(0):
+        if name & 0x80000000 or (name & 0xffff) != 14 or not child & 0x80000000:
+            continue
+        for _, named in entries(child & 0x7fffffff):
+            if not named & 0x80000000:
+                continue
+            for _, leaf in entries(named & 0x7fffffff):
+                if leaf & 0x80000000:
+                    continue
+                data_entry = base + (leaf & 0x7fffffff)
+                image_rva, image_size = struct.unpack_from('<II', data, data_entry)
+                image = data[offset(image_rva):offset(image_rva) + image_size]
+                reserved, kind, count = struct.unpack_from('<HHH', image)
+                assert reserved == 0 and kind == 1 and count > 0 and len(image) >= 6 + 14 * count, 'Invalid embedded Windows group icon'
+                icon_groups += 1
+    return icon_groups
+
+
 def audit(root):
     manifest = json.loads((root / 'package-manifest.json').read_text())
     expected = manifest['files']
     files = {p.relative_to(root).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest() for p in root.rglob('*') if p.is_file() and p.name != 'package-manifest.json'}
     assert expected == files, 'Manifest / file tree mismatch'
     assert manifest['target'] == 'win-x64' and not manifest['realWindowsValidated']
+    assert (root / 'Resources/AppIcon.png').is_file(), 'Missing Windows window-header icon'
+    assert group_icon_count(root / 'HasselbladStartupStudio.exe') > 0, 'Missing Windows executable icon resource'
     for name in ['HasselbladStartupStudio.exe', 'libusb-1.0.dll', 'coreclr.dll', 'hostfxr.dll', 'libSkiaSharp.dll', 'libHarfBuzzSharp.dll']:
         assert pe(root / name)[0] == 0x8664, 'Wrong x64 architecture: ' + name
     adb = root / 'Resources/bin'

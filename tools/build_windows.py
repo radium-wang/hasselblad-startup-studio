@@ -41,7 +41,8 @@ def package(args):
     assert pe_machine(args.libusb) == 0x8664
     shutil.copyfile(args.libusb, output / 'libusb-1.0.dll')
     resources = output / 'Resources'
-    resources.mkdir()
+    resources.mkdir(exist_ok=True)
+    shutil.copyfile(ROOT / 'assets/app-icon/AppIcon.png', resources / 'AppIcon.png')
     for name in ['adapter.json', 'patch.bin']:
         shutil.copyfile(args.adapter / name, resources / name)
     legacy_hash = 'a2edfe28ad8dbf91ed19fb87526cc6eceb21ceb00a40347ee58e9afaec6929e0'

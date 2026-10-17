@@ -8,8 +8,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 ROOT_FILES = {'README.md', 'LICENSE', '.gitignore', 'AGENTS.md', 'CONTRIBUTING.md',
               'SECURITY.md', 'THIRD_PARTY_NOTICES.md', 'CHANGELOG.md', 'BUILD.md', 'requirements-dev.txt'}
-SOURCE_DIRS = {'native', 'tools', 'CodeTests', 'research', '.github', 'windows'}
-SUFFIXES = {'.swift', '.c', '.h', '.S', '.py', '.md', '.txt', '.json', '.yml', '.yaml', '.cs', '.csproj', '.manifest', '.props', '.ps1'}
+SOURCE_DIRS = {'assets', 'native', 'tools', 'CodeTests', 'research', '.github', 'windows'}
+SUFFIXES = {'.png', '.icns', '.ico', '.swift', '.c', '.h', '.S', '.py', '.md', '.txt', '.json', '.yml', '.yaml', '.cs', '.csproj', '.manifest', '.props', '.ps1'}
+ASSET_SUFFIXES = {'.png', '.icns', '.ico'}
 IGNORED = {'outputs', '__pycache__', '.venv', '.git', 'inputs', '.DS_Store'}
 PRIVATE_PATTERNS = [
     r'/Users/[A-Za-z0-9_.-]+/', r'/home/[A-Za-z0-9_.-]+/',
@@ -51,6 +52,9 @@ def audit(root, verify_release=False):
     for path in files:
         relative = path.relative_to(root).as_posix()
         data = path.read_bytes()
+        if path.suffix in ASSET_SUFFIXES:
+            hashes[relative] = hashlib.sha256(data).hexdigest()
+            continue
         text = data.decode('utf-8')
         if '\0' in text:
             raise ValueError(f'Binary content in source: {relative}')

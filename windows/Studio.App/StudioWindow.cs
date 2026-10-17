@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.Media.Imaging;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using System.Reflection;
@@ -51,7 +52,11 @@ public sealed class StudioWindow : Window
         layout.VerticalAlignment = VerticalAlignment.Top;
         Opened += (_, _) => FitClient(); SizeChanged += (_, _) => FitClient();
         var heading = new Grid { ColumnDefinitions = new("Auto,*,Auto,Auto"), ColumnSpacing = 12 };
-        var icon = new Border { Width = 44, Height = 44, CornerRadius = new CornerRadius(11), Background = new SolidColorBrush(Color.Parse("#FAEADD")), Child = new TextBlock { Text = "▧", FontSize = 23, Foreground = new SolidColorBrush(Color.Parse("#D76B28")), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center } };
+        var iconPath = Path.Combine(AppContext.BaseDirectory, "Resources", "AppIcon.png");
+        Control iconContent = File.Exists(iconPath)
+            ? new Image { Source = new Bitmap(iconPath), Width = 44, Height = 44, Stretch = Avalonia.Media.Stretch.UniformToFill }
+            : new TextBlock { Text = "▧", FontSize = 23, Foreground = new SolidColorBrush(Color.Parse("#D76B28")), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+        var icon = new Border { Width = 44, Height = 44, CornerRadius = new CornerRadius(11), Background = new SolidColorBrush(Color.Parse("#FAEADD")), Child = iconContent, ClipToBounds = true };
         var intro = new StackPanel { Spacing = 3 }; intro.Children.Add(new TextBlock { Text = "开机画面", FontSize = 24, FontWeight = FontWeight.SemiBold }); intro.Children.Add(Text("Hasselblad X2D / 907X · CFV 100C", 12));
         var version = new Border { Padding = new Thickness(9, 5), CornerRadius = new CornerRadius(6), Background = new SolidColorBrush(Color.Parse("#E9EAED")), VerticalAlignment = VerticalAlignment.Center, Child = Text("测试版 " + BuildVersion, 11) };
         Connect.VerticalAlignment = VerticalAlignment.Center;

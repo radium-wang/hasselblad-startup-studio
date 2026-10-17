@@ -194,6 +194,7 @@ struct StudioView:View {
     @StateObject var model=StudioModel()
     private let accent=Color(red:0.89,green:0.43,blue:0.14)
     private var panel:Color {Color(nsColor:.controlBackgroundColor)}
+    private var appIcon: NSImage? { Bundle.main.url(forResource:"AppIcon",withExtension:"png").flatMap { NSImage(contentsOf:$0) } }
     private func card<Content:View>(@ViewBuilder _ content:()->Content)->some View {
         content().padding(18).frame(maxWidth:.infinity,maxHeight:.infinity,alignment:.topLeading)
             .background(panel).clipShape(RoundedRectangle(cornerRadius:14))
@@ -202,8 +203,13 @@ struct StudioView:View {
     var body:some View {
         VStack(alignment:.leading,spacing:18) {
             HStack(spacing:12) {
-                Image(systemName:"camera.viewfinder").font(.system(size:25,weight:.medium)).foregroundColor(accent)
-                    .frame(width:48,height:48).background(accent.opacity(0.09)).cornerRadius(12)
+                if let appIcon {
+                    Image(nsImage:appIcon).resizable().interpolation(.high).scaledToFill()
+                        .frame(width:48,height:48).clipShape(RoundedRectangle(cornerRadius:12))
+                } else {
+                    Image(systemName:"camera.viewfinder").font(.system(size:25,weight:.medium)).foregroundColor(accent)
+                        .frame(width:48,height:48).background(accent.opacity(0.09)).cornerRadius(12)
+                }
                 VStack(alignment:.leading,spacing:4) {
                     Text("开机画面").font(.system(size:23,weight:.semibold))
                     Text("Hasselblad X2D / 907X · CFV 100C").font(.system(size:12)).foregroundColor(.secondary)
