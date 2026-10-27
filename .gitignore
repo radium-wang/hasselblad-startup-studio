@@ -1,4 +1,6 @@
 /outputs/
+**/bin/
+**/obj/
 /.venv/
 __pycache__/
 *.py[cod]

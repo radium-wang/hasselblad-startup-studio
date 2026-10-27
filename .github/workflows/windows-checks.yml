@@ -1,9 +1,9 @@
 name: Windows offline checks
 on:
   push:
-    paths: ['windows/**', 'CodeTests/**', '.github/workflows/windows-checks.yml']
+    paths: ['windows/**', 'gen2/**', 'CodeTests/**', '.github/workflows/windows-checks.yml']
   pull_request:
-    paths: ['windows/**', 'CodeTests/**', '.github/workflows/windows-checks.yml']
+    paths: ['windows/**', 'gen2/**', 'CodeTests/**', '.github/workflows/windows-checks.yml']
   workflow_dispatch:
 permissions:
   contents: read

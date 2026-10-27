@@ -36,16 +36,16 @@ public sealed class WinUsbFactory : IUsbBulk, IDisposable
     {
         if (!success) NativeUsb.Require(ErrorCode(Marshal.GetLastWin32Error()), "WinUSB " + stage);
     }
-    public WinUsbFactory()
+    public WinUsbFactory(Action<string>? trace = null)
     {
-        var cameraCount = WindowsAdbInterface.SupportedDeviceCount;
-        Check.That(cameraCount == 1, cameraCount == 0 ? "未检测到支持的相机，请保持开机后重新检测。" : "请只连接一台 X2D 或 CFV 100C 相机。");
+        var cameras = WindowsAdbInterface.PresentPhysicalDevices();
         var paths = WindowsAdbInterface.FactoryPaths();
-        Check.That(paths.Length == 1, paths.Length == 0 ? "未检测到支持的相机工厂 WinUSB 接口，请重新检测。" : "请只连接一台 X2D 或 CFV 100C 相机。");
-        ProductId = paths[0].ProductId;
+        trace?.Invoke($"Windows USB 识别：{cameras.Length} 台物理相机，{paths.Length} 个工厂接口（同设备别名已合并）");
+        var selected = WindowsAdbInterface.SelectFactory(cameras, paths);
+        ProductId = WindowsAdbInterface.PhysicalProductId(selected.PhysicalId);
         try
         {
-            device = CreateFileW(paths[0].Path, 0xc0000000, 3, IntPtr.Zero, 3, 0x40000000, IntPtr.Zero);
+            device = CreateFileW(selected.Path, 0xc0000000, 3, IntPtr.Zero, 3, 0x40000000, IntPtr.Zero);
             Require(!device.IsInvalid, "接口3打开"); Require(WinUsb_Initialize(device, out handle), "接口3初始化");
             Require(WinUsb_GetCurrentAlternateSetting(handle, out var alternate), "当前接口检查");
             Check.That(alternate == 0, "工厂 WinUSB 当前接口设置不受支持。");

@@ -5,6 +5,8 @@ namespace StartupStudio;
 public sealed class AdbProcess(string executable)
 {
     public string? Serial { get; set; }
+    public Action<string> Trace { get; set; } = _ => { };
+    public Action FailureSnapshot { get; set; } = () => { };
     public bool UsbOnly { get; set; }
     public int? ServerPort { get; set; }
     private static async Task<byte[]> Bounded(Stream stream, int limit)
@@ -13,9 +15,12 @@ public sealed class AdbProcess(string executable)
         while ((read = await stream.ReadAsync(block)) > 0) { Check.That(output.Length + read <= limit, "ADB 回包超过允许长度。"); output.Write(block, 0, read); }
         return output.ToArray();
     }
-    public byte[] Run(string[] arguments, int timeout = 30000, bool selected = true)
+    public byte[] Run(string[] arguments, int timeout = 30000, bool selected = true, string? workingDirectory = null)
     {
-        var start = new ProcessStartInfo(executable) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardInput = true, RedirectStandardOutput = true, RedirectStandardError = true, WorkingDirectory = Path.GetDirectoryName(executable)! };
+        var operation = arguments.FirstOrDefault() ?? "unknown";
+        var timer = Stopwatch.StartNew();
+        Trace("ADB begin operation=" + operation);
+        var start = new ProcessStartInfo(executable) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardInput = true, RedirectStandardOutput = true, RedirectStandardError = true, WorkingDirectory = workingDirectory ?? Path.GetDirectoryName(executable)! };
         OwnedAdbServer.ClearOverrides(start);
         if (ServerPort != null) { start.ArgumentList.Add("-H"); start.ArgumentList.Add("127.0.0.1"); start.ArgumentList.Add("-P"); start.ArgumentList.Add(ServerPort.Value.ToString()); }
         if (selected && UsbOnly) start.ArgumentList.Add("-d");
@@ -24,15 +29,19 @@ public sealed class AdbProcess(string executable)
         using var task = new Process { StartInfo = start };
         try { Check.That(task.Start(), "无法启动内置 ADB。"); } catch (System.ComponentModel.Win32Exception) { throw new StudioException("无法启动内置 ADB，请完整解压安装包。"); }
         task.StandardInput.Close(); var output = Bounded(task.StandardOutput.BaseStream, 4 * 1024 * 1024); var errors = Bounded(task.StandardError.BaseStream, 256 * 1024);
-        if (!task.WaitForExit(timeout)) { task.Kill(); task.WaitForExit(3000); throw new StudioException("ADB 操作超时，请保持相机开机并检查数据线。"); }
-        var bytes = output.GetAwaiter().GetResult(); var error = Encoding.UTF8.GetString(errors.GetAwaiter().GetResult()).ToLowerInvariant();
+        if (!task.WaitForExit(timeout)) { task.Kill(); task.WaitForExit(3000); FailureSnapshot(); Trace("ADB timeout operation=" + operation); throw new StudioException("ADB " + operation + " 操作超时，请保持相机开机并检查数据线。"); }
+        var bytes = output.GetAwaiter().GetResult(); var rawError = Encoding.UTF8.GetString(errors.GetAwaiter().GetResult()); var error = rawError.ToLowerInvariant();
+        Trace($"ADB end operation={operation} exit={task.ExitCode} elapsedMs={timer.ElapsedMilliseconds}");
         if (task.ExitCode != 0)
         {
+            var detail = AdbDiagnosticText.Sanitize(rawError, arguments.Skip(1).Append(workingDirectory ?? "").Append(executable).Append(Serial ?? ""));
+            Trace("ADB stderr=" + detail);
+            FailureSnapshot();
             if (task.ExitCode < 0) throw new StudioException(AdbStartupFailure.Message(task.ExitCode, error));
             if (error.Contains("permission denied")) throw new StudioException("文件传输被相机权限拒绝，安装未继续。");
             if (error.Contains("more than one device") || error.Contains("more than one emulator")) throw new StudioException("检测到多台 USB 设备，请只保留这台相机后重试。");
             if (error.Contains("no devices") || error.Contains("device not found") || error.Contains("device offline")) throw new StudioException("文件传输时相机连接已断开，请唤醒后重新检测。");
-            throw new StudioException("ADB 操作失败（退出码 " + task.ExitCode + "），请重新检测相机。");
+            throw new StudioException("ADB " + operation + " 失败（退出码 " + task.ExitCode + "）：" + detail);
         }
         return bytes;
     }
@@ -65,7 +74,7 @@ public sealed class ManagedCameraLink : IManagedCameraLink
         foreach (var name in new[] { "AdbWinApi.dll", "AdbWinUsbApi.dll" }) Check.That(File.Exists(Path.Combine(Path.GetDirectoryName(executable)!, name)), "内置文件传输组件缺失：" + name + "。安装尚未开始，请完整解压安装包。");
         var version = new AdbProcess(executable).Run(["version"], 10000, false);
         Check.That(Encoding.UTF8.GetString(version).Contains("Android Debug Bridge version"), "内置 ADB 版本自检未通过，安装尚未开始。");
-        var process = new AdbProcess(executable) { UsbOnly = true };
+        var process = new AdbProcess(executable) { UsbOnly = true, Trace = trace, FailureSnapshot = CaptureFailure };
         if (!config.Split(',').Contains("adb"))
         {
             switched = true;
@@ -116,6 +125,12 @@ public sealed class ManagedCameraLink : IManagedCameraLink
         trace("Transfer preparation timeout; adbInterface=" + WindowsAdbInterface.Present(productId) + " factoryReconnect=" + (lastReconnect ?? "not-attempted"));
         throw new StudioException(server == null ? "Windows ADB 接口尚未出现，安装尚未开始；请检查接口驱动后重新检测。" : lastReconnect != null ? "文件传输准备超时：工厂 USB 接口重新连接失败，安装尚未开始。请完整关机再开机后重新检测。" : "等待文件传输通道超时，安装尚未开始；请检查 Windows ADB 接口驱动后重新检测。");
     }
+    private void CaptureFailure()
+    {
+        // Snapshot before Finish removes the temporary ADB interface. Never hide the original error.
+        try { trace("ADB failure USB snapshot=" + WindowsUsbDiagnostics.Collect("transfer-diagnostic")); }
+        catch { trace("ADB failure USB snapshot unavailable"); }
+    }
     private static string TempFolder()
     {
         var dir = Path.Combine(Path.GetTempPath(), "startup-transfer-" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(dir); return dir;
@@ -127,7 +142,8 @@ public sealed class ManagedCameraLink : IManagedCameraLink
         try
         {
             Check.That(TransportRules.UsbSerial(Encoding.UTF8.GetString(process.Run(["get-serialno"], 5000))) == process.Serial, "物理 USB 文件传输设备发生变化。");
-            var file = Path.Combine(dir, "data"); process.Run(["pull", path, file]); var data = File.ReadAllBytes(file);
+            trace("Read phase=download-original-or-resource");
+            var file = Path.Combine(dir, "data"); process.Run(["pull", path, "data"], workingDirectory: dir); var data = File.ReadAllBytes(file);
             Check.That(data.Length == size && Command("sha256sum " + path).Split(' ')[0] == Check.Hash(data), "相机文件读取或校验失败，未继续安装。");
             log(path == CameraPaths.Library ? "原厂备份读取完成，校验通过" : "图片读回校验通过"); return data;
         }
@@ -139,7 +155,7 @@ public sealed class ManagedCameraLink : IManagedCameraLink
         try
         {
             Check.That(TransportRules.UsbSerial(Encoding.UTF8.GetString(process.Run(["get-serialno"], 5000))) == process.Serial, "物理 USB 文件传输设备发生变化。");
-            var file = Path.Combine(dir, "data"); File.WriteAllBytes(file, data); process.Run(["push", file, path]);
+            var file = Path.Combine(dir, "data"); File.WriteAllBytes(file, data); process.Run(["push", "data", path], workingDirectory: dir);
             Check.That(Command("sha256sum " + path).Split(' ')[0] == Check.Hash(data), "相机文件上传校验失败。");
             trace("ADB 文件上传完成；长度与 SHA-256 核对通过");
         }

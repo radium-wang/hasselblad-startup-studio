@@ -1,6 +1,6 @@
 # Windows 版使用与验证
 
-0.2.0-preview.3，2026-10-13。本版为 Windows x64 测试包，界面与核心已完整移植。
+当前预发布测试版 `0.4.0-gen2-preview.1`，2026-10-27：同步 Mac 的原尺寸居中、基础裁剪及彩色／灰度界面，新增 X2D II 100C / 1.3.18.1 独立后端。现提供测试包下载；作者没有 Windows 电脑，Windows 二代驱动及完整相机流程尚未实机测试；底层二代试验和当前 App 的边界见 [二代说明](GEN2.md)。
 包内包含 .NET 10 运行时、libusb 与 ADB；用户不需要安装 Python、.NET 或开发工具。
 Windows 11 的 Intel / AMD 64 位电脑是首轮验收目标。Windows 10、ARM 电脑和实际 Windows 的 USB 驱动尚未验收；不支持 Windows 7 / 8。
 
@@ -9,23 +9,25 @@ Windows 11 的 Intel / AMD 64 位电脑是首轮验收目标。Windows 10、ARM 
 完整解压 ZIP，保持整个文件夹，双击 `HasselbladStartupStudio.exe`。不能只复制 EXE。
 相机保持开机，用数据线连接，先点击“连接相机”。只连接一台支持的相机。
 支持第一代 X2D 100C 普通 / 大地、907X 与 CFV 100C 标准版，原厂绘图库必须匹配 4.2.0 固定哈希。
-不支持 CFV II 50C、第二代 X2D 或其他固件。
+另接受 X2D II 100C 原厂 1.3.18.1 的固定 GUI 和原图哈希。不支持 CFV II 50C 或其他固件。
 
-左侧导入单张 PNG / JPEG。应用自动按方向解码、合成透明背景为黑色并转换为 8 位灰度。
-方向校正后的宽度 ≤ 1024、高度 ≤ 768；超过限制请先在外部调整大小。
-“保留黑边”按原尺寸居中；“裁剪”允许框选、移动选框、拖动四角。两种方式都不会放大或拉伸图片。
-中间预览使用 1024 × 768 画布，并按相机的整数坐标居中。
+左侧导入 PNG / JPEG，自动校正方向，宽不超过 1024、高不超过 768，不自动缩放；可选择 RGB 每通道 8-bit 或 8-bit 灰度，透明度在黑底合成。
+保留原尺寸居中和基础裁剪，在左侧拖动选框及四角；中间为相机成品预览，右侧为简要日志。导出 PNG 对应处理后的图片；二代安装时另在完整画布居中并编码为 NV12。
 
 点击“安装自定义画面”，首次原厂备份必须完整校验后才开始替换。
 可以连续换图，后续换图保留同一份首次备份。
 点击“恢复原厂”，恢复这台相机首次登记的普通 / 大地 / 标准版原库及文件属性，并清理本应用的机内文件。
-不改产品 `SuVariant`、环境 `su_variant`、相机序列号或原厂图。
+一代不改产品 `SuVariant`、环境 `su_variant`、相机序列号或原厂资源。二代直接替换独立 Logo 文件，先保留原厂原图并在恢复时还原。
 电脑上的首次备份保留，不能删除；目录在 `%LOCALAPPDATA%\X2DStartupStudio\Backups`。
 
 若相机曾在 Mac 安装自定义图，请先在原 Mac 恢复，或者完整迁移该设备的首次备份目录到上述 Windows 目录。
-记录格式与 Mac 兼容；没有对应电脑备份时拒绝覆盖，不能凭机内库重新猜测原厂状态。
+一代记录格式与 Mac 兼容；没有对应电脑备份时拒绝覆盖，不能凭机内库重新猜测原厂状态。二代另有机内首次备份及记录，可在另一台电脑核验并恢复。
 
 ## Windows USB 驱动
+
+二代 CTRL 使用 `MI_04` WinUSB，临时文件传输使用 `MI_06` ADB 接口；与下面一代的 CTRL 接口不同。不要替换整个复合设备或存储接口的驱动。二代的 Windows 驱动操作和真实相机尚待验收。
+
+未发布的 USB 识别修订按 Windows 设备实例和物理父设备计数，合并同一工厂接口的登记别名；真正连接两台相机仍会停止。新包内可双击 `USB识别诊断.cmd`，或者运行 `HasselbladStartupStudio.exe --usb-diagnostics`。它只读取 Windows USB 登记信息，生成 `%LOCALAPPDATA%\X2DStartupStudio\Logs\usb-diagnostics\result.json`；包内脚本会打开这份报告。不发送相机命令、不启动 ADB、不安装驱动。报告包含识别数量、接口编号、驱动类别和 Windows 问题码，不包含相机序列号与用户路径；连接仍失败时可将这份报告用于排查。
 
 当前源码新增针对已登记工厂接口的 WinUSB 直接路径，只打开 MI_03，避免与 ADB 的 MI_06 发生组合设备打开冲突。优先使用已实测的接口 GUID，其他已登记的接口 GUID 也可被发现；接口描述、单相机和固定端点均需校验通过。工厂接口短暂未就绪时按超时边界等待重连；驱动不会被自动更换。只读实机验证与未完成的完整操作验收见 [WinUSB 验证摘要](WINDOWS_WINUSB.md)。
 
@@ -98,8 +100,25 @@ Windows 包只有通过以上验收后才能标记为正式稳定版。
 dotnet build windows/Studio.Tests/Studio.Tests.csproj -c Release --artifacts-path outputs/windows-build
 dotnet outputs/windows-build/bin/Studio.Tests/release/Studio.Tests.dll . outputs/adapter /path/to/original/eagle-backend.so
 python3 CodeTests/check_windows_transactions.py --resources outputs/adapter --stock /path/to/original/eagle-backend.so
-python3 tools/build_windows.py --dotnet /path/to/dotnet --adapter outputs/adapter --libusb /path/to/libusb-1.0.dll --adb /path/to/platform-tools --licenses /path/to/dependency-licenses --output outputs/Hasselblad-Startup-Studio-Windows-x64
+python3 tools/build_windows.py --dotnet /path/to/dotnet --adapter outputs/rgb-adapter --legacy-adapter outputs/legacy-adapter --libusb /path/to/libusb-1.0.dll --adb /path/to/platform-tools --licenses /path/to/dependency-licenses --gen2-python-zip inputs/python-3.13.15-embed-amd64.zip --output outputs/Hasselblad-Startup-Studio-Windows-x64
 ```
 
 上述测试默认无 USB 访问。Linux / Windows 上可运行 .NET 核心与 headless UI 检查；文件系统 shell 验证的当前命令面向 Mac。
 Windows 验收时再人工连接相机，先只读检查，保留首次备份，然后安装一张测试图、替换另一张、恢复并核对原厂状态。
+
+
+## 本地只读传输诊断版（2026-10-24）
+
+下面的“只读传输检测”入口只用于第一代 4.2.0；二代使用 App 的“连接相机”以及“USB识别诊断.cmd”，后者已包含二代 MI_04 / MI_06 的匿名驱动信息。
+
+完整解压诊断包，关闭正在运行的 App，连接一台处于开机状态的相机，双击 `只读传输检测.cmd`，按任意键开始。完成后自动打开 `result.txt`，将该文件反馈即可。日志位于 `%LOCALAPPDATA%\X2DStartupStudio\Logs\transfer-diagnostics`，每次检测覆盖上次结果。
+
+此入口临时切换运行时 USB 模式，下载原厂绘图库并核对大小与 SHA-256，随后恢复 USB。它不安装图片、不创建首次备份或相机暂存文件；非原厂绘图库会被拒绝。ADB 失败时在恢复 USB 前保存接口登记，日志保留脱敏 stderr，不保存标准输出、设备序列号或下载的文件内容。关闭窗口或拔线会打断检测，应等结果弹出。
+
+构建和离线测试不调用真实相机。
+
+### 路径修复与用户反馈
+
+用户现场日志显示 `get-serialno` 和 `shell` 成功，随后 `pull` 在电脑创建目标文件时报 `No such file or directory`；当时 ADB 接口 06 的驱动为 WinUSB、问题码为 0，USB 收尾最终确认成功。下载和上传改为指定独立临时工作目录，只向 ADB 传递 ASCII 本地文件名 `data`，保留传输后的大小／哈希校验与清理。
+
+244 项离线检查通过，Windows x64 交叉构建与 ZIP／包清单核验通过。用户反馈 `diag.2` 新包已成功安装图片；尚未收到冷启动显示与恢复确认，也没有单独隔离原路径的字符集等触发条件，不能据此声称所有 Windows 环境已验收。

@@ -84,15 +84,15 @@ static class Tests
                 Test("adb-startup-missing-dll", () => Equal(AdbStartupFailure.Category(unchecked((int)0xc0000135), "") == "runtime"));
                 Test("adb-startup-unsupported-listener", () => Equal(AdbStartupFailure.Category(1, "listening on specified hostname currently unsupported") == "listener"));
                 Test("adb-startup-no-private-error-leak", () => Equal(!AdbStartupFailure.Message(1, "private-path device-identifier").Contains("private-path") && !AdbStartupFailure.Message(1, "private-path device-identifier").Contains("device-identifier")));
-                var image = new GrayImage(321, 239, Enumerable.Range(0, 321 * 239).Select(i => (byte)(i % 251)).ToArray());
-                Test("gray-roundtrip", () => Equal(GrayImage.Decode(image.Envelope()).Pixels.SequenceEqual(image.Pixels)));
-                Test("gray-max-canvas", () => Equal(new GrayImage(1024, 768, new byte[1024 * 768]).Envelope().Length == 786464));
-                Test("gray-empty-refused", () => Reject(() => new GrayImage(0, 1, []).Envelope()));
-                Test("gray-width-refused", () => Reject(() => new GrayImage(1025, 1, new byte[1025]).Envelope()));
-                Test("gray-height-refused", () => Reject(() => new GrayImage(1, 769, new byte[769]).Envelope()));
-                Test("gray-checksum-refused", () => { var b = image.Envelope(); b[32] ^= 1; Reject(() => GrayImage.Decode(b)); });
-                Test("gray-trailing-refused", () => Reject(() => GrayImage.Decode([.. image.Envelope(), 0])));
-                Test("gray-reserved-refused", () => { var b = image.Envelope(); b[28] = 1; Reject(() => GrayImage.Decode(b)); });
+                var image = new StartupImage(321, 239, Enumerable.Range(0, 321 * 239).Select(i => (byte)(i % 251)).ToArray());
+                Test("gray-roundtrip", () => Equal(StartupImage.Decode(image.Envelope()).Pixels.SequenceEqual(image.Pixels)));
+                Test("gray-max-canvas", () => Equal(new StartupImage(1024, 768, new byte[1024 * 768]).Envelope().Length == 786464));
+                Test("gray-empty-refused", () => Reject(() => new StartupImage(0, 1, []).Envelope()));
+                Test("gray-width-refused", () => Reject(() => new StartupImage(1025, 1, new byte[1025]).Envelope()));
+                Test("gray-height-refused", () => Reject(() => new StartupImage(1, 769, new byte[769]).Envelope()));
+                Test("gray-checksum-refused", () => { var b = image.Envelope(); b[32] ^= 1; Reject(() => StartupImage.Decode(b)); });
+                Test("gray-trailing-refused", () => Reject(() => StartupImage.Decode([.. image.Envelope(), 0])));
+                Test("gray-reserved-refused", () => { var b = image.Envelope(); b[28] = 1; Reject(() => StartupImage.Decode(b)); });
                 Test("crop-pixels", () => { var c = image.Crop(1, 1, 17, 13); Equal(c.Width == 17 && c.Height == 13 && c.Pixels[0] == image.Pixels[322]); });
                 Test("crop-clamped", () => { var c = image.Crop(10000, -100, 1000, 1000); Equal(c.Width == 1 && c.Height == 239); });
                 foreach (var model in new[] { Models.X2D, Models.Cfv })
@@ -137,6 +137,20 @@ static class Tests
                     {
                         var b = r.Baseline; var fixtureLink = new ControllerFixture(stock, adapter, patch, b.CameraModel, b.Variant, b.DisplayKey);
                         var c = new CameraController(fixtureLink, resources, Path.Combine(temp, "Lifecycle-" + Guid.NewGuid().ToString("N"))) { Wait = _ => { } };
+                        Test("transfer-diagnostic-read-only-" + records.IndexOf(r), () =>
+                        {
+                            TransferDiagnostic.Run(c, fixtureLink, _ => { });
+                            Equal(fixtureLink.Finished == 1 && fixtureLink.Files.Count == 1 && fixtureLink.Roots.Count == 0 && !Directory.Exists(c.BackupRoot));
+                            Equal(!fixtureLink.Commands.Any(x => x.Contains("remount") || x.StartsWith("umask") || x.StartsWith("rm ")));
+                        });
+                        Test("transfer-diagnostic-preserves-failure-and-cleanup-" + records.IndexOf(r), () =>
+                        {
+                            fixtureLink.FailNextRead = true; fixtureLink.FailFinish = true;
+                            string message = "";
+                            try { TransferDiagnostic.Run(c, fixtureLink, _ => { }); } catch (StudioException e) { message = e.Message; }
+                            Equal(message.Contains("文件传输服务启动失败") && message.Contains("fixture cleanup failed") && fixtureLink.Finished == 2 && fixtureLink.Files.Count == 1 && !Directory.Exists(c.BackupRoot));
+                            fixtureLink.FailFinish = false;
+                        });
                         Test("controller-adb-start-failure-before-mutation-" + b.CameraModel + "-" + b.DisplayKey, () =>
                         {
                             fixtureLink.FailNextRead = true; Reject(() => c.Install(image));
@@ -147,7 +161,7 @@ static class Tests
                         {
                             c.Install(image); var first = File.ReadAllBytes(Path.Combine(c.Folder(b), "baseline.json"));
                             c.Install(image.Crop(1, 1, 17, 13)); Equal(first.SequenceEqual(File.ReadAllBytes(Path.Combine(c.Folder(b), "baseline.json"))));
-                            Equal(GrayImage.Decode(fixtureLink.Files[CameraPaths.Image]).Width == 17); c.Restore(); c.Restore();
+                            Equal(StartupImage.Decode(fixtureLink.Files[CameraPaths.Image]).Width == 17); c.Restore(); c.Restore();
                             Equal(Check.Hash(fixtureLink.Files[CameraPaths.Library]) == adapter.OriginalSHA256 && CameraPaths.Owned.All(p => !fixtureLink.Files.ContainsKey(p)) && fixtureLink.Roots.Count == 0);
                             Equal(!File.Exists(Path.Combine(c.Folder(b), "active")) && File.Exists(Path.Combine(c.Folder(b), "original-backend.so")));
                         });
@@ -159,9 +173,19 @@ static class Tests
                     }
                 }
                 if (!OperatingSystem.IsWindows()) TestAdb(temp); else TestWindowsAdb();
+                Test("adb-diagnostic-redacts-paths-and-serial", () =>
+                {
+                    var detail = AdbDiagnosticText.Sanitize("failed to create 'C:\\Private Name\\data': No space left; device 'SECRET-ID'", ["SECRET-ID"]);
+                    Equal(detail.Contains("No space left") && !detail.Contains("Private Name") && !detail.Contains("SECRET-ID"));
+                });
                 UsbRecoveryChecks.Run(Test);
+                WindowsDeviceChecks.Run(Test);
+                Gen2ProcessChecks.Run(Test,temp);
                 TestImages(temp, image);
+                if (stockPath != null) RgbChecks.Recovery(Test, resources, stockPath, temp);
                 TestUi(repo, image, temp, resources, stockPath, adapter, patch);
+                RgbChecks.Run(Test, temp);
+                ImageEditingChecks.Run(Test, temp, repo);
                 Directory.CreateDirectory(Path.Combine(repo, "outputs"));
                 var report = JsonSerializer.Serialize(new { passed = true, checks = passed, deviceAccessed = false, host = RuntimeInformation.OSDescription, syntheticAdapter, actualFirmwareTested = stockPath != null, windowsDriverTested = false }, new JsonSerializerOptions { WriteIndented = true });
                 File.WriteAllText(Path.Combine(resources, "windows-tests.json"), report);
@@ -178,6 +202,14 @@ static class Tests
         Equal(File.Exists(path)); var p = new AdbProcess(path);
         Test("adb-large-output-no-deadlock", () => Equal(p.Run(["large"], selected: false).Length == 262144));
         Test("adb-permission-error", () => Reject(() => p.Run(["denied"], selected: false)));
+        Test("adb-failure-detail-and-before-cleanup-snapshot", () =>
+        {
+            var messages = new List<string>(); var snapshots = 0;
+            p.Trace = messages.Add; p.FailureSnapshot = () => snapshots++;
+            Reject(() => p.Run(["denied"], selected: false));
+            Equal(snapshots == 1 && messages.Any(x => x.Contains("operation=denied exit=1")) && messages.Any(x => x.Contains("Permission denied")));
+            p.Trace = _ => { }; p.FailureSnapshot = () => { };
+        });
         Test("adb-client-timeout", () => Reject(() => p.Run(["slow"], 100, false)));
         Test("adb-argument-unicode-spaces", () => Equal(Encoding.UTF8.GetString(p.Run(["argument", "图片 空格 ' $()"], selected: false)) == "图片 空格 ' $()"));
         Test("windows-adb-d-argument", () => { p.UsbOnly = true; p.Serial = "ignored-serial"; Equal(Encoding.UTF8.GetString(p.Run(["argument", "physical USB"])) == "physical USB"); });
@@ -191,8 +223,25 @@ static class Tests
     {
         var path = Path.Combine(temp, "fake adb"); File.WriteAllText(path, "#!/bin/sh\nif [ \"$1\" = '-H' ];then printf '%s:%s' \"$2\" \"$4\";exit;fi\nif [ \"$1\" = '-d' ];then shift;fi\ncase \"$1\" in\nlarge) /usr/bin/head -c 262144 /dev/zero;;\ndenied) echo 'Permission denied' >&2;exit 1;;\nmany) echo 'more than one device/emulator' >&2;exit 1;;\nslow) exec /bin/sleep 3;;\nargument) printf '%s' \"$2\";;\nesac\n"); File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
         var p = new AdbProcess(path);
+        Test("adb-relative-file-in-unicode-working-directory", () =>
+        {
+            var folder = Path.Combine(temp, "传输 目录"); Directory.CreateDirectory(folder);
+            var helper = Path.Combine(temp, "relative-file-helper");
+            File.WriteAllText(helper, "#!/bin/sh\nprintf payload > \"$1\"\n");
+            File.SetUnixFileMode(helper, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+            new AdbProcess(helper).Run(["data"], selected: false, workingDirectory: folder);
+            Equal(File.ReadAllText(Path.Combine(folder, "data")) == "payload");
+        });
         Test("adb-large-output-no-deadlock", () => Equal(p.Run(["large"], selected: false).Length == 262144));
         Test("adb-permission-error", () => Reject(() => p.Run(["denied"], selected: false)));
+        Test("adb-failure-detail-and-before-cleanup-snapshot", () =>
+        {
+            var messages = new List<string>(); var snapshots = 0;
+            p.Trace = messages.Add; p.FailureSnapshot = () => snapshots++;
+            Reject(() => p.Run(["denied"], selected: false));
+            Equal(snapshots == 1 && messages.Any(x => x.Contains("operation=denied exit=1")) && messages.Any(x => x.Contains("Permission denied")));
+            p.Trace = _ => { }; p.FailureSnapshot = () => { };
+        });
         Test("adb-client-timeout", () => Reject(() => p.Run(["slow"], 100, false)));
         Test("adb-argument-unicode-spaces", () => Equal(Encoding.UTF8.GetString(p.Run(["argument", "图片 空格 ' $()"], selected: false)) == "图片 空格 ' $()"));
         Test("windows-adb-d-argument", () => { p.UsbOnly = true; p.Serial = "ignored-serial"; Equal(Encoding.UTF8.GetString(p.Run(["argument", "physical USB"])) == "physical USB"); });
@@ -222,12 +271,12 @@ static class Tests
         File.WriteAllText("outputs/windows-adb-probe/production-result.json", JsonSerializer.Serialize(new { passed = true, realBundledAdb = true, productionServer = true, protocolReady = true, processExited = gone, port, deviceAccessed = false, cameraTested = false, diagnostics }));
         Console.WriteLine("PASS real bundled Windows ADB: version, production listener, private client, no devices, owned process exit"); return 0;
     }
-    static void TestImages(string temp, GrayImage image)
+    static void TestImages(string temp, StartupImage image)
     {
         var png = Path.Combine(temp, "gray.png");
         Test("gray-png-export-import-exact", () => { Images.Export(image, png); var decoded = Images.Import(png); Equal(decoded.Width == image.Width && decoded.Height == image.Height && decoded.Pixels.SequenceEqual(image.Pixels)); });
         Test("rgba-black-composite", () => { using var b = new SKBitmap(2, 1); b.SetPixel(0, 0, new SKColor(255, 0, 0, 255)); b.SetPixel(1, 0, new SKColor(0, 255, 0, 0)); using var bytes = b.Encode(SKEncodedImageFormat.Png, 100); File.WriteAllBytes(png, bytes.ToArray()); var d = Images.Import(png); Equal(d.Pixels.SequenceEqual(new byte[] { 76, 0 })); });
-        Test("png-oversize-refused", () => { using var b = new SKBitmap(1025, 1); using var bytes = b.Encode(SKEncodedImageFormat.Png, 100); File.WriteAllBytes(png, bytes.ToArray()); Reject(() => Images.Import(png)); });
+        Test("png-oversize-refused-without-resizing", () => { using var b = new SKBitmap(1025, 1); using var bytes = b.Encode(SKEncodedImageFormat.Png, 100); File.WriteAllBytes(png, bytes.ToArray()); Reject(() => Images.Import(png)); });
         Test("corrupt-image-refused", () => { File.WriteAllText(png, "invalid"); Reject(() => Images.Import(png)); });
         for (var origin = 1; origin <= 8; origin++) { var o = origin; Test("exif-orientation-map-" + o, () => { var w = o >= 5 ? 2 : 3; var h = o >= 5 ? 3 : 2; var coords = new HashSet<(int, int)>(); for (var y = 0; y < h; y++) for (var x = 0; x < w; x++) { var p = Images.Orient(o, x, y, 3, 2); Equal(p.X is >= 0 and < 3 && p.Y is >= 0 and < 2); coords.Add(p); } Equal(coords.Count == 6); }); }
         using var jpegBitmap = new SKBitmap(3, 2);
@@ -246,17 +295,44 @@ static class Tests
             });
         }
     }
-    static void TestUi(string repo, GrayImage image, string temp, string resources, string? stockPath, Adapter adapter, byte[] patch)
+    static void TestUi(string repo, StartupImage image, string temp, string resources, string? stockPath, Adapter adapter, byte[] patch)
     {
         AppBuilder.Configure<StudioApplication>().UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = false }).UseSkia().SetupWithoutStarting();
         var window = new StudioWindow();
         Test("ui-no-auto-connect", () => Equal(!window.Install.IsEnabled && !window.Restore.IsEnabled && window.Connect.IsEnabled));
         Test("ui-import-preview", () => { window.SetImage(image, "offline.png"); Equal(window.Preview.Image!.Pixels.SequenceEqual(image.Pixels) && !window.Install.IsEnabled); });
         Test("preview-native-integer-centering", () => Equal(CameraPreview.CenterRect(image) == new Rect(351, 264, 321, 239)));
-        Test("ui-crop-exact", () => { window.Mode.SelectedIndex = 1; window.Editor.Crop = new Rect(1, 1, 17, 13); Equal(window.Output!.Width == 17 && window.Output.Pixels[0] == image.Pixels[322]); });
-        Test("ui-contain-reset", () => { window.Mode.SelectedIndex = 0; Equal(window.Output!.Width == 321 && window.Output.Height == 239); });
+        Test("ui-crop-exact", () => { window.Mode.SelectedIndex = 1; window.Editor.Crop = new Rect(1, 1, 17, 13); Equal(window.Output!.Width == 17 && window.Output.Height == 13 && window.Output.Pixels[0] == image.Pixels[322]); });
+        Test("ui-contain-reset", () => { window.Mode.SelectedIndex = 0; Equal(window.Output!.Width == image.Width && window.Output.Height == image.Height && window.Output.Pixels.SequenceEqual(image.Pixels)); });
         Test("ui-real-controls-render", () => { window.Width = 1260; window.Height = 800; window.Show(); Dispatcher.UIThread.RunJobs(); AvaloniaHeadlessPlatform.ForceRenderTimerTick(); using var frame = window.CaptureRenderedFrame(); Equal(frame != null); frame!.Save(Path.Combine(repo, "outputs", "windows-ui-preview.png"), Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default); });
+        Test("ui-real-mouse-can-move-crop", () =>
+        {
+            window.Mode.SelectedIndex = 1; window.Editor.Crop = new Rect(30, 30, 160, 120); Dispatcher.UIThread.RunJobs(); AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+            var k = Math.Min((window.Editor.Bounds.Width - 24) / image.Width, (window.Editor.Bounds.Height - 24) / image.Height);
+            var point = new Point((window.Editor.Bounds.Width - image.Width * k) / 2 + 100 * k, (window.Editor.Bounds.Height - image.Height * k) / 2 + 80 * k);
+            var start = window.Editor.TranslatePoint(point, window)!.Value; var end = start + new Vector(20 * k, 10 * k);
+            window.MouseDown(start, Avalonia.Input.MouseButton.Left); window.MouseMove(end, Avalonia.Input.RawInputModifiers.LeftMouseButton); window.MouseUp(end, Avalonia.Input.MouseButton.Left);
+            Equal(Math.Abs(window.Editor.Crop.X - 50) < 1 && Math.Abs(window.Editor.Crop.Y - 40) < 1); window.Mode.SelectedIndex = 0;
+        });
         Test("ui-small-window-layout", () => { window.Width = 1080; window.Height = 640; Dispatcher.UIThread.RunJobs(); AvaloniaHeadlessPlatform.ForceRenderTimerTick(); var bottom = window.Install.TranslatePoint(new Point(0, window.Install.Bounds.Height), window); Equal(bottom != null && bottom.Value.Y <= window.Bounds.Height - 20 && window.Preview.Bounds.Height >= 160); using var frame = window.CaptureRenderedFrame(); Equal(frame != null); frame!.Save(Path.Combine(repo, "outputs", "windows-ui-small.png"), Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default); });
+        Test("ui-small-window-crop-selection-is-visible", () =>
+        {
+            window.Mode.SelectedIndex = 1; Dispatcher.UIThread.RunJobs(); AvaloniaHeadlessPlatform.ForceRenderTimerTick(); Dispatcher.UIThread.RunJobs();
+            var editor = window.Editor.TranslatePoint(default, window)!.Value; var footer = window.Install.TranslatePoint(default, window)!.Value;
+            Equal(window.Editor.Active && window.Status.Text!.Contains("已进入裁剪") && editor.Y >= 150 && editor.Y + window.Editor.Bounds.Height <= footer.Y);
+            window.Mode.SelectedIndex = 0;
+        });
+        Test("ui-connection-in-header-and-install-actions-in-footer", () =>
+        {
+            var connect = window.Connect.TranslatePoint(default, window)!.Value; var restore = window.Restore.TranslatePoint(default, window)!.Value; var install = window.Install.TranslatePoint(default, window)!.Value;
+            Equal(connect.Y < 100 && Math.Abs(restore.Y - install.Y) < 2 && restore.X < install.X && restore.Y > window.Bounds.Height - 100);
+        });
+        Test("ui-color-preview-and-grayscale-selection", () =>
+        {
+            window.SetImage(RgbChecks.Colors, "rgb.png"); Equal(window.Output!.Channels == 4 && window.Preview.Image!.Pixels.SequenceEqual(RgbChecks.Colors.Pixels));
+            window.Colors.SelectedIndex = 1; Equal(window.Output!.Channels == 1 && window.Output.Pixels.SequenceEqual(RgbChecks.Colors.Grayscale().Pixels));
+            window.Colors.SelectedIndex = 0; window.SetImage(image, "offline.png");
+        });
         Test("ui-friendly-errors", () => Equal(!StudioWindow.FriendlyFailure("LIBUSB_ERROR_TIMEOUT").Contains("LIBUSB") && StudioWindow.FriendlyFailure("LIBUSB_ERROR_IO\n自动恢复未确认").Contains("保留电脑备份")));
         Test("ui-preserves-first-failure-with-cleanup-failure", () =>
         {
@@ -291,7 +367,12 @@ static class Tests
             void Pump(Task task) { while (!task.IsCompleted) { Dispatcher.UIThread.RunJobs(); Thread.Sleep(2); } task.GetAwaiter().GetResult(); Dispatcher.UIThread.RunJobs(); }
             Test("ui-detect-and-buttons", () => { var task = window.Perform(0); Equal(!window.Connect.IsEnabled && !window.Import.IsEnabled); Pump(task); Equal(window.Install.IsEnabled && !window.Restore.IsEnabled); });
             Test("ui-install-and-menu-reboot-notice", () => { Pump(window.Perform(1)); Equal(window.Restore.IsEnabled && window.Status.Text!.Contains("关机再开机") && fixture.Files.ContainsKey("/tmp/x2d-native-menu-attempt")); });
-            Test("ui-restore-earth-and-preserve-other-menu-guard", () => { Pump(window.Perform(2)); if (window.Restore.IsEnabled || !window.Status.Text!.Contains("大地版") || !fixture.Files.ContainsKey("/tmp/x2d-native-menu-attempt") || fixture.Finished != 3) throw new Exception($"Restore UI: status={window.Status.Text}, enabled={window.Restore.IsEnabled}, finish={fixture.Finished}"); });
+            Test("ui-failed-display-service-preserves-restore-entry", () =>
+            {
+                fixture.ServicesFailed = true; Pump(window.Perform(0)); Equal(window.Restore.IsEnabled && !window.Install.IsEnabled);
+                fixture.ServicesFailed = false;
+            });
+            Test("ui-restore-earth-and-preserve-other-menu-guard", () => { Pump(window.Perform(2)); if (window.Restore.IsEnabled || !window.Status.Text!.Contains("大地版") || !fixture.Files.ContainsKey("/tmp/x2d-native-menu-attempt") || fixture.Finished != 4) throw new Exception($"Restore UI: status={window.Status.Text}, enabled={window.Restore.IsEnabled}, finish={fixture.Finished}"); });
             Test("ui-connection-failure-disables-install", () => { window.LinkFactory = (_, _) => throw new StudioException("LIBUSB_ERROR_BUSY"); Pump(window.Perform(0)); Equal(!window.Install.IsEnabled && !window.Restore.IsEnabled && window.Connect.IsEnabled && window.Status.Text!.Contains("其他程序")); });
         }
         window.Close();

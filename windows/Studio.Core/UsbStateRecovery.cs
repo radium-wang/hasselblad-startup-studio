@@ -10,7 +10,7 @@ public static class UsbStateRecovery
         Check.That(original is Normal or Transfer, "USB 原状态无效，禁止恢复未知配置。");
         return "/system/bin/toybox nohup /system/bin/sh -c 'sleep 1;setprop sys.usb.config none;sleep 1;setprop sys.usb.config " + original + "' >/dev/null 2>&1 &";
     }
-    public static bool Transient(string message) => new[] { "LIBUSB_ERROR_NO_DEVICE", "LIBUSB_ERROR_TIMEOUT", "LIBUSB_ERROR_IO", "LIBUSB_ERROR_BUSY", "LIBUSB_ERROR_ACCESS", "LIBUSB_ERROR_NOT_FOUND", "LIBUSB_ERROR_NOT_SUPPORTED", "未检测到支持的相机", "工厂 WinUSB 接口未就绪", "USB 会话已断开" }.Any(message.Contains);
+    public static bool Transient(string message) => new[] { "LIBUSB_ERROR_NO_DEVICE", "LIBUSB_ERROR_TIMEOUT", "LIBUSB_ERROR_IO", "LIBUSB_ERROR_BUSY", "LIBUSB_ERROR_ACCESS", "LIBUSB_ERROR_NOT_FOUND", "LIBUSB_ERROR_NOT_SUPPORTED", "未检测到支持的相机", "工厂 WinUSB 接口未就绪", "Windows 相机设备关系读取失败", "工厂接口与物理相机不匹配", "USB 会话已断开" }.Any(message.Contains);
     public static string Category(string message) =>
         message.Contains("LIBUSB_ERROR_TIMEOUT") ? "timeout" :
         message.Contains("LIBUSB_ERROR_BUSY") ? "busy" :

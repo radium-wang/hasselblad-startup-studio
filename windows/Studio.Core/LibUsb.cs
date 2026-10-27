@@ -54,7 +54,7 @@ public sealed class UsbLink : IUsbCameraLink
     {
         if (WinUsbFactory.Available)
         {
-            factory = new WinUsbFactory(); ProductId = factory.ProductId;
+            factory = new WinUsbFactory(trace); ProductId = factory.ProductId;
             trace("工厂 WinUSB 会话已打开：仅接口3，OUT 0x04 / IN 0x85；ADB 接口独立"); return;
         }
         // A Windows composite libusb open grabs other WinUSB interfaces too.
@@ -77,7 +77,8 @@ public sealed class UsbLink : IUsbCameraLink
                 var vid = d[8] | d[9] << 8; var pid = d[10] | d[11] << 8;
                 if (vid == 0x2756 && pid is 9 or 10) { found = device; matches++; ProductId = (ushort)pid; }
             }
-            Check.That(matches == 1, matches == 0 ? "未检测到支持的相机，请连接数据线并保持相机开机。" : "请只连接一台 X2D 或 CFV 100C 相机。");
+            trace($"libusb USB 识别：{matches} 个受支持设备；未发现已登记的工厂 WinUSB 接口");
+            Check.That(matches == 1, matches == 0 ? "未检测到支持的相机，请连接数据线并保持相机开机。" : $"libusb 检测到 {matches} 个相机设备，无法确认访问目标；请只连接一台相机并生成 USB 识别诊断报告。");
             NativeUsb.Require(NativeUsb.libusb_open(found, out handle), "设备打开");
             NativeUsb.Require(NativeUsb.libusb_claim_interface(handle, 3), "接口3占用"); claimed = true;
             NativeUsb.Require(NativeUsb.libusb_set_interface_alt_setting(handle, 3, 0), "接口3配置");

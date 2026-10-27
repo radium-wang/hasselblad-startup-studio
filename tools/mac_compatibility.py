@@ -34,6 +34,8 @@ def audit_app(app, required=ARCHITECTURES):
     info = plistlib.loads((app/'Contents/Info.plist').read_bytes())
     if info.get('LSMinimumSystemVersion') != MINIMUM_MACOS:
         raise RuntimeError('Info.plist 最低系统与构建目标不一致')
+    if info.get('CFBundleIconFile') != 'AppIcon' or not (app/'Contents/Resources/AppIcon.icns').is_file() or not (app/'Contents/Resources/AppIcon.png').is_file():
+        raise RuntimeError('App 缺少已登记的图标资源')
     binaries = []
     for path in sorted(app.rglob('*')):
         if path.is_file():
