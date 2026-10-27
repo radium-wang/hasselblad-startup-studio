@@ -1,45 +1,46 @@
 # Hasselblad Startup Studio
 
-为第一代 **X2D 100C / 907X 与 CFV 100C（原厂固件 4.2.0）** 更换主屏开机画面。
+为 **X2D 100C / 907X 与 CFV 100C（原厂固件 4.2.0）** 及 **X2D II 100C（1.3.18.1）** 更换主屏开机画面。
 支持导入 PNG／JPEG、基础裁剪、原尺寸居中预览，以及首次原厂备份与恢复。
 
 ## 下载最新版
 
-**macOS / Windows 统一版本：`0.3.0-rgb-preview.5` · RGB 彩色／灰度 · 预发布测试版**
+**`0.4.0-gen2-preview.1` · macOS / Windows 均已完成二代适配 · RGB 彩色／灰度 · 预发布测试版**
 
 | 平台 | 下载 | 系统要求 |
 | --- | --- | --- |
-| macOS | [下载 Universal ZIP](https://github.com/radium-wang/hasselblad-startup-studio/releases/download/v0.3.0-rgb-preview.5/Hasselblad-Startup-Studio-0.3.0-rgb-preview.5-macOS-Universal.zip) | macOS 13 及以上；Intel / Apple Silicon |
-| Windows | [下载 x64 ZIP](https://github.com/radium-wang/hasselblad-startup-studio/releases/download/v0.3.0-rgb-preview.5/Hasselblad-Startup-Studio-0.3.0-rgb-preview.5-Windows-x64.zip) | Intel / AMD 64 位；驱动兼容性需在用户电脑验收 |
+| macOS | [下载 Universal ZIP](https://github.com/radium-wang/hasselblad-startup-studio/releases/download/v0.4.0-gen2-preview.1/Hasselblad-Startup-Studio-0.4.0-gen2-preview.1-macOS-Universal.zip) | macOS 13 及以上；Intel / Apple Silicon |
+| Windows | 待实机测试后开放下载 | Intel / AMD 64 位；暂无 Windows 电脑完成实机验收 |
 
-[发布说明与 SHA-256](https://github.com/radium-wang/hasselblad-startup-studio/releases/tag/v0.3.0-rgb-preview.5) · [对应源码](https://github.com/radium-wang/hasselblad-startup-studio/tree/v0.3.0-rgb-preview.5) · [RGB 实现与验证记录](https://github.com/radium-wang/hasselblad-startup-studio/blob/v0.3.0-rgb-preview.5/research/WINDOWS_RGB.md)
+[发布说明与 SHA-256](https://github.com/radium-wang/hasselblad-startup-studio/releases/tag/v0.4.0-gen2-preview.1) · [对应源码](https://github.com/radium-wang/hasselblad-startup-studio/tree/v0.4.0-gen2-preview.1) · [二代适配与验证说明](research/GEN2.md)
 
-**新版 RGB 的真实相机安装、冷启动显示和恢复尚未完成验收，保留为测试版。** 普通版和大地版的首次备份保护均已保留；既有灰度版实机结果不能替代 RGB 版验收。
+**Mac 版已收到用户实机测试正常的反馈，现已开放下载。Windows 版已完成适配，但目前没有 Windows 电脑进行实机测试，待测试后开放下载。** 普通版和大地版的首次备份保护均已保留。
 
 ### 安装与升级
 
 - **macOS：**解压后将 **X2D Startup Studio.app** 拖入“应用程序”。无需 Homebrew；安装包未经过 Apple 公证，首次打开可按 [Apple 官方说明](https://support.apple.com/zh-cn/102445)核对 App 后允许打开。
-- **Windows：**完整解压后运行 **HasselbladStartupStudio.exe**，保留整个文件夹。无需另装 .NET、Python 或开发工具；USB 驱动说明见 [Windows 使用说明](https://github.com/radium-wang/hasselblad-startup-studio/blob/v0.3.0-rgb-preview.5/research/WINDOWS.md)。
+- **Windows：**本次二代版本暂未开放下载。开放后需完整解压并运行 **HasselbladStartupStudio.exe**，保留整个文件夹；无需另装 .NET、Python 或开发工具。
 - **旧灰度版升级：**保留首次备份，在同一台电脑上先恢复原厂，再安装 RGB 版。新版能识别已登记的历史灰度安装并提供恢复；不要直接覆盖旧适配层。
 
 <details>
-<summary>下载旧版灰度包</summary>
+<summary>下载旧版（仅支持第一代相机）</summary>
 
 | 平台 | 版本 | 下载与说明 |
 | --- | --- | --- |
+| Windows x64 | 0.3.0-rgb-preview.5（RGB／灰度） | [ZIP](https://github.com/radium-wang/hasselblad-startup-studio/releases/download/v0.3.0-rgb-preview.5/Hasselblad-Startup-Studio-0.3.0-rgb-preview.5-Windows-x64.zip) · [发布说明](https://github.com/radium-wang/hasselblad-startup-studio/releases/tag/v0.3.0-rgb-preview.5) |
 | macOS Universal | 0.1.4-cc.1（功能版本 0.1.4） | [ZIP](https://github.com/radium-wang/hasselblad-startup-studio/releases/download/v0.1.4-cc.1/hasselblad-startup-studio-0.1.4-cc.1-macOS-Universal.zip) · [发布说明](https://github.com/radium-wang/hasselblad-startup-studio/releases/tag/v0.1.4-cc.1) |
 | Windows x64 | 0.2.0-preview.3 | [ZIP](https://github.com/radium-wang/hasselblad-startup-studio/releases/download/v0.2.0-preview.3/Hasselblad-Startup-Studio-0.2.0-preview.3-Windows-x64.zip) · [发布说明](https://github.com/radium-wang/hasselblad-startup-studio/releases/tag/v0.2.0-preview.3) |
 
-旧包仅支持灰度。Windows preview.3 已包含工厂 WinUSB / ADB 共存修复；更早 preview.2 的发布附件不包含该修复。旧包同样属于测试版，验证范围见各自发布说明。
+0.1.4 和 0.2.0 旧包仅支持灰度。Windows preview.3 已包含工厂 WinUSB / ADB 共存修复；更早 preview.2 的发布附件不包含该修复。旧包同样属于测试版，验证范围见各自发布说明。
 
 </details>
 
 ## 功能与图片要求
 
-- **灰度或彩色：**preview.5 可选择 8 位灰度或 RGB 每通道 8 位；透明区域填黑。
+- **灰度或彩色：**可选择 8 位灰度或 RGB 每通道 8 位；透明区域填黑。
 - **原尺寸居中：**PNG／JPEG 按方向纠正后，宽不超过 **1024**、高不超过 **768** 像素；不自动缩放，按原厂方式在 1024×768 画布中居中显示。
 - **基础裁剪：**保留原版选框、新建裁剪框、移动及四角调整；macOS 和 Windows 以 Mac 三栏布局为准。
-- **独立模式 3：**自定义画面使用 App 独立模式，保留原厂普通版／大地版身份和显示键，不提供切换机型入口。
+- **保留原厂身份：**第一代自定义画面使用独立模式 3，保留普通版／大地版身份和显示键；二代备份并替换独立 Logo 文件，不创建产品变体。
 - **连续换图：**同一新版安装后可直接换另一张图，后续换图不覆盖首次原厂备份。
 - **恢复原厂：**使用这台相机自己的首次备份。普通版恢复原厂 H 图，大地版恢复原厂大地图；不改序列号、产品变体或原厂显示键。
 
@@ -64,7 +65,8 @@
 | 第一代普通 X2D 100C / 4.2.0 | 历史灰度版完成一次 App 安装、恢复及独立原厂状态核验；新版 RGB 完整实机流程待验收 |
 | 第一代大地 X2D 100C / 4.2.0 | 原厂身份、显示键、首次备份与恢复约束已离线验证；完整实机流程待验收 |
 | 907X / CFV 100C / 4.2.0 | 支持识别与恢复包机型约束，当前仅接受标准变体 0；显示、安装及恢复待实机验收 |
-| CFV II 50C / X2D II / 其他固件 | 不开放安装 |
+| X2D II 100C / 1.3.18.1 | macOS 已完成适配并收到用户实机测试正常反馈；Windows 已适配，待实机测试后开放下载 |
+| CFV II 50C / 其他固件 | 不开放安装 |
 | macOS Intel / Apple Silicon | Universal 包、原生窗口及离线检查通过；真实 Intel 与 macOS 13 最低系统验收待完成 |
 | Windows | 有云端原生窗口及离线验证记录、历史只读 USB / ADB 实机证据；不同电脑的驱动及新版完整安装／恢复待验收 |
 
@@ -87,7 +89,7 @@ Discussion, research findings and feedback are welcome. Please use [Issues](http
 
 ## 构建与源码
 
-**RGB preview.5 的源码在 [v0.3.0-rgb-preview.5](https://github.com/radium-wang/hasselblad-startup-studio/tree/v0.3.0-rgb-preview.5)。默认分支当前保留既有灰度实现；本次首页更新不合并 RGB 功能代码。**
+**本次 macOS / Windows 二代适配源码在 [v0.4.0-gen2-preview.1](https://github.com/radium-wang/hasselblad-startup-studio/tree/v0.4.0-gen2-preview.1)。Windows 本次仅上传源码，待实机测试后开放安装包。** 默认分支保留既有灰度实现与下载指引，构建当前版本请使用对应标签源码。
 
 构建请使用目标版本自己的 [RGB 构建说明](https://github.com/radium-wang/hasselblad-startup-studio/blob/v0.3.0-rgb-preview.5/BUILD.md)或本分支 [BUILD.md](BUILD.md)。原厂库、生成的补丁二进制、依赖发行包、用户图片、设备备份及原始日志不包含在源码仓库中；构建者自行准备匹配输入。
 
