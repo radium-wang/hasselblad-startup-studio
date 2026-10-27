@@ -1,11 +1,13 @@
 """生成原生 macOS 本地测试 .app，构建不访问 USB。"""
 import argparse,json,plistlib,shutil,subprocess
+import gen2_package
 from pathlib import Path
-from mac_compatibility import ARCHITECTURES,MINIMUM_MACOS,require_architectures,audit_app
+from mac_compatibility import ARCHITECTURES,MINIMUM_MACOS,MACHO_MAGIC,require_architectures,audit_app
 ROOT=Path(__file__).resolve().parents[1]
-VERSION='0.3.0-rgb-preview.5'
+VERSION='0.4.0-gen2-preview.1'
 def main():
  p=argparse.ArgumentParser(description=__doc__)
+ p.add_argument('--gen2-runtime',type=Path,required=True);p.add_argument('--gen2-python-license',type=Path,required=True);p.add_argument('--pyusb',type=Path,required=True);p.add_argument('--pyusb-license',type=Path,required=True)
  p.add_argument('--debug',action='store_true');p.add_argument('--adapter',type=Path,required=True);p.add_argument('--legacy-adapter',type=Path,required=True);p.add_argument('--libusb',type=Path,required=True);p.add_argument('--libusb-license',type=Path);p.add_argument('--adb',type=Path,required=True);p.add_argument('--adb-license',type=Path,required=True);p.add_argument('--usb-include',type=Path,required=True);p.add_argument('--output',type=Path,default=ROOT/'outputs/macOS-Universal')
  a=p.parse_args();a.output.mkdir(parents=True,exist_ok=True)
  for dependency in (a.libusb,a.adb):require_architectures(dependency,ARCHITECTURES)
@@ -18,6 +20,8 @@ def main():
  app=a.output/'X2D Startup Studio.app';contents=app/'Contents';binpath=contents/'MacOS';resources=contents/'Resources';frameworks=contents/'Frameworks'
  for folder in (binpath,resources,frameworks):folder.mkdir(parents=True,exist_ok=True)
  for name in ('patch.bin','adapter.json'):shutil.copy2(a.adapter/name,resources/name)
+ shutil.copy2(ROOT/'assets/app-icon/AppIcon.icns',resources/'AppIcon.icns')
+ shutil.copy2(ROOT/'assets/app-icon/AppIcon.png',resources/'AppIcon.png')
  historical=resources/'legacy'/legacy['adapterSHA256'];historical.mkdir(parents=True,exist_ok=True)
  for name in ('patch.bin','adapter.json'):shutil.copy2(a.legacy_adapter/name,historical/name)
  for name in ('LICENSE','THIRD_PARTY_NOTICES.md'):shutil.copy2(ROOT/name,resources/name)
@@ -31,7 +35,8 @@ def main():
  shutil.copy2(a.adb,resources/'bin/adb');(resources/'bin/adb').chmod(0o755)
  shutil.copy2(a.adb_license,resources/'Android-platform-tools.txt')
  subprocess.run(['install_name_tool','-id','@rpath/libusb-1.0.0.dylib',str(frameworks/'libusb-1.0.0.dylib')],check=True)
- sources=[ROOT/'native/Core.swift',ROOT/'native/Transport.swift',ROOT/'native/App.swift',ROOT/'CodeTests/SelfTests.swift']
+ gen2_package.mac(ROOT,resources,a.gen2_runtime,a.gen2_python_license,a.pyusb,a.pyusb_license)
+ sources=[ROOT/'native/Core.swift',ROOT/'native/Transport.swift',ROOT/'native/Gen2Host.swift',ROOT/'native/App.swift',ROOT/'CodeTests/SelfTests.swift']
  slices=[]
  for arch in ARCHITECTURES:
   target=arch+'-apple-macosx'+MINIMUM_MACOS;obj=a.output/('USBBridge-'+arch+'.o');cache=a.output/('module-cache-'+arch);binary=a.output/('StartupStudio-'+arch)
@@ -45,13 +50,16 @@ def main():
   dep=line.strip().split(' (')[0]
   if 'libusb' in dep and not dep.startswith('@rpath'):
    subprocess.run(['install_name_tool','-change',dep,'@rpath/libusb-1.0.0.dylib',str(binpath/'StartupStudio')],check=True)
- info=dict(CFBundleName='X2D Startup Studio',CFBundleDisplayName='X2D / 907X 开机画面',CFBundleIdentifier='local.x2d.startupstudio',CFBundleVersion='6',CFBundleShortVersionString='0.3.0',CFBundleGetInfoString=VERSION,CFBundleExecutable='StartupStudio',CFBundlePackageType='APPL',LSMinimumSystemVersion=MINIMUM_MACOS,NSHighResolutionCapable=True,NSUSBUsageDescription='通过 USB 检查相机、安装自定义开机画面及恢复首次原厂备份。')
+ info=dict(CFBundleName='X2D Startup Studio',CFBundleDisplayName='X2D / X2D II / 907X 开机画面',CFBundleIdentifier='local.x2d.startupstudio',CFBundleVersion='7',CFBundleShortVersionString='0.4.0',CFBundleGetInfoString=VERSION,CFBundleExecutable='StartupStudio',CFBundleIconFile='AppIcon',CFBundlePackageType='APPL',LSMinimumSystemVersion=MINIMUM_MACOS,NSHighResolutionCapable=True,NSUSBUsageDescription='通过 USB 检查相机、安装自定义开机画面及恢复首次原厂备份。')
  (contents/'Info.plist').write_bytes(plistlib.dumps(info))
  subprocess.run(['codesign','--force','--sign','-',str(frameworks/'libusb-1.0.0.dylib')],check=True)
  subprocess.run(['codesign','--force','--sign','-',str(resources/'bin/adb')],check=True)
+ for candidate in sorted((resources/'gen2/runtime').rglob('*'),key=lambda x:len(x.parts),reverse=True):
+  if candidate.is_file() and candidate.open('rb').read(4) in MACHO_MAGIC:
+   subprocess.run(['codesign','--force','--sign','-',str(candidate)],check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
  subprocess.run(['codesign','--force','--sign','-',str(app)],check=True)
  subprocess.run(['codesign','--verify','--deep','--strict',str(app)],check=True)
  (a.output/'macOS-compatibility-audit.json').write_text(json.dumps(audit_app(app),indent=2)+'\n')
- (a.output/'build.json').write_text(json.dumps(dict(app=app.name,arch='Universal',architectures=list(ARCHITECTURES),minimumMacOS=MINIMUM_MACOS,version=VERSION,mode=3,factoryWrites=False,deviceAccessed=False,adapterSHA256=manifest['adapterSHA256'],signature='local ad-hoc',notarized=False),indent=2)+'\n')
+ (a.output/'build.json').write_text(json.dumps(dict(app=app.name,arch='Universal',architectures=list(ARCHITECTURES),minimumMacOS=MINIMUM_MACOS,version=VERSION,mode=3,factoryIdentityWrites=False,gen2LogoBackend=True,gen2AppHardwareValidated=False,deviceAccessed=False,adapterSHA256=manifest['adapterSHA256'],signature='local ad-hoc',notarized=False),indent=2)+'\n')
  print(app)
 if __name__=='__main__':main()

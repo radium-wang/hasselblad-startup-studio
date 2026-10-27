@@ -137,6 +137,20 @@ static class Tests
                     {
                         var b = r.Baseline; var fixtureLink = new ControllerFixture(stock, adapter, patch, b.CameraModel, b.Variant, b.DisplayKey);
                         var c = new CameraController(fixtureLink, resources, Path.Combine(temp, "Lifecycle-" + Guid.NewGuid().ToString("N"))) { Wait = _ => { } };
+                        Test("transfer-diagnostic-read-only-" + records.IndexOf(r), () =>
+                        {
+                            TransferDiagnostic.Run(c, fixtureLink, _ => { });
+                            Equal(fixtureLink.Finished == 1 && fixtureLink.Files.Count == 1 && fixtureLink.Roots.Count == 0 && !Directory.Exists(c.BackupRoot));
+                            Equal(!fixtureLink.Commands.Any(x => x.Contains("remount") || x.StartsWith("umask") || x.StartsWith("rm ")));
+                        });
+                        Test("transfer-diagnostic-preserves-failure-and-cleanup-" + records.IndexOf(r), () =>
+                        {
+                            fixtureLink.FailNextRead = true; fixtureLink.FailFinish = true;
+                            string message = "";
+                            try { TransferDiagnostic.Run(c, fixtureLink, _ => { }); } catch (StudioException e) { message = e.Message; }
+                            Equal(message.Contains("文件传输服务启动失败") && message.Contains("fixture cleanup failed") && fixtureLink.Finished == 2 && fixtureLink.Files.Count == 1 && !Directory.Exists(c.BackupRoot));
+                            fixtureLink.FailFinish = false;
+                        });
                         Test("controller-adb-start-failure-before-mutation-" + b.CameraModel + "-" + b.DisplayKey, () =>
                         {
                             fixtureLink.FailNextRead = true; Reject(() => c.Install(image));
@@ -159,8 +173,14 @@ static class Tests
                     }
                 }
                 if (!OperatingSystem.IsWindows()) TestAdb(temp); else TestWindowsAdb();
+                Test("adb-diagnostic-redacts-paths-and-serial", () =>
+                {
+                    var detail = AdbDiagnosticText.Sanitize("failed to create 'C:\\Private Name\\data': No space left; device 'SECRET-ID'", ["SECRET-ID"]);
+                    Equal(detail.Contains("No space left") && !detail.Contains("Private Name") && !detail.Contains("SECRET-ID"));
+                });
                 UsbRecoveryChecks.Run(Test);
                 WindowsDeviceChecks.Run(Test);
+                Gen2ProcessChecks.Run(Test,temp);
                 TestImages(temp, image);
                 if (stockPath != null) RgbChecks.Recovery(Test, resources, stockPath, temp);
                 TestUi(repo, image, temp, resources, stockPath, adapter, patch);
@@ -182,6 +202,14 @@ static class Tests
         Equal(File.Exists(path)); var p = new AdbProcess(path);
         Test("adb-large-output-no-deadlock", () => Equal(p.Run(["large"], selected: false).Length == 262144));
         Test("adb-permission-error", () => Reject(() => p.Run(["denied"], selected: false)));
+        Test("adb-failure-detail-and-before-cleanup-snapshot", () =>
+        {
+            var messages = new List<string>(); var snapshots = 0;
+            p.Trace = messages.Add; p.FailureSnapshot = () => snapshots++;
+            Reject(() => p.Run(["denied"], selected: false));
+            Equal(snapshots == 1 && messages.Any(x => x.Contains("operation=denied exit=1")) && messages.Any(x => x.Contains("Permission denied")));
+            p.Trace = _ => { }; p.FailureSnapshot = () => { };
+        });
         Test("adb-client-timeout", () => Reject(() => p.Run(["slow"], 100, false)));
         Test("adb-argument-unicode-spaces", () => Equal(Encoding.UTF8.GetString(p.Run(["argument", "图片 空格 ' $()"], selected: false)) == "图片 空格 ' $()"));
         Test("windows-adb-d-argument", () => { p.UsbOnly = true; p.Serial = "ignored-serial"; Equal(Encoding.UTF8.GetString(p.Run(["argument", "physical USB"])) == "physical USB"); });
@@ -195,8 +223,25 @@ static class Tests
     {
         var path = Path.Combine(temp, "fake adb"); File.WriteAllText(path, "#!/bin/sh\nif [ \"$1\" = '-H' ];then printf '%s:%s' \"$2\" \"$4\";exit;fi\nif [ \"$1\" = '-d' ];then shift;fi\ncase \"$1\" in\nlarge) /usr/bin/head -c 262144 /dev/zero;;\ndenied) echo 'Permission denied' >&2;exit 1;;\nmany) echo 'more than one device/emulator' >&2;exit 1;;\nslow) exec /bin/sleep 3;;\nargument) printf '%s' \"$2\";;\nesac\n"); File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
         var p = new AdbProcess(path);
+        Test("adb-relative-file-in-unicode-working-directory", () =>
+        {
+            var folder = Path.Combine(temp, "传输 目录"); Directory.CreateDirectory(folder);
+            var helper = Path.Combine(temp, "relative-file-helper");
+            File.WriteAllText(helper, "#!/bin/sh\nprintf payload > \"$1\"\n");
+            File.SetUnixFileMode(helper, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+            new AdbProcess(helper).Run(["data"], selected: false, workingDirectory: folder);
+            Equal(File.ReadAllText(Path.Combine(folder, "data")) == "payload");
+        });
         Test("adb-large-output-no-deadlock", () => Equal(p.Run(["large"], selected: false).Length == 262144));
         Test("adb-permission-error", () => Reject(() => p.Run(["denied"], selected: false)));
+        Test("adb-failure-detail-and-before-cleanup-snapshot", () =>
+        {
+            var messages = new List<string>(); var snapshots = 0;
+            p.Trace = messages.Add; p.FailureSnapshot = () => snapshots++;
+            Reject(() => p.Run(["denied"], selected: false));
+            Equal(snapshots == 1 && messages.Any(x => x.Contains("operation=denied exit=1")) && messages.Any(x => x.Contains("Permission denied")));
+            p.Trace = _ => { }; p.FailureSnapshot = () => { };
+        });
         Test("adb-client-timeout", () => Reject(() => p.Run(["slow"], 100, false)));
         Test("adb-argument-unicode-spaces", () => Equal(Encoding.UTF8.GetString(p.Run(["argument", "图片 空格 ' $()"], selected: false)) == "图片 空格 ' $()"));
         Test("windows-adb-d-argument", () => { p.UsbOnly = true; p.Serial = "ignored-serial"; Equal(Encoding.UTF8.GetString(p.Run(["argument", "physical USB"])) == "physical USB"); });

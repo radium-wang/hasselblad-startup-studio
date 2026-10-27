@@ -16,7 +16,8 @@ internal sealed class ControllerFixture : IManagedCameraLink
     internal bool FailCleanup;
     internal bool RestorationInterrupted;
     internal bool ServicesFailed;
-    public void Finish() => Finished++;
+    internal bool FailFinish;
+    public void Finish() { Finished++; if (FailFinish) throw new StudioException("fixture cleanup failed"); }
     public void Dispose() { }
     readonly Adapter adapter;
     readonly byte[] patch;

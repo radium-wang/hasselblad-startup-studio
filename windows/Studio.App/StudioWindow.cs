@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.Media.Imaging;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using System.Reflection;
@@ -20,7 +21,7 @@ public sealed class StudioWindow : Window
     public readonly CameraPreview Preview = new() { Name = "CameraPreview", MinHeight = 160 };
     public readonly TextBlock Status = new() { Text = "导入图片预览，或连接相机检查", TextWrapping = TextWrapping.Wrap, Name = "Status" };
     private readonly TextBlock device = Text("等待连接相机", 14), current = Text("尚未检测", 14), filename = Text("未导入图片", 12), dimensions = Text("1024 × 768 画布", 12);
-    private readonly TextBlock note = Text("仅支持第一代 X2D 100C / 907X 与 CFV 100C，原厂固件 4.2.0。", 12);
+    private readonly TextBlock note = Text("X2D / CFV 100C：4.2.0；X2D II：1.3.18.1 测试适配。", 12);
     private readonly TextBlock logs = new() { TextWrapping = TextWrapping.Wrap, FontSize = 13, LineHeight = 22, Margin = new Thickness(0, 0, 8, 0) };
     private readonly ScrollViewer logScroll;
     private readonly Button reset = new() { Content = "重置裁剪" }, export = new() { Content = "导出成品 PNG…" };
@@ -32,7 +33,10 @@ public sealed class StudioWindow : Window
     public string ResourcesPath { get; set; } = Path.Combine(AppContext.BaseDirectory, "Resources");
     public string BackupRoot { get; set; } = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "X2DStartupStudio", "Backups");
     public string DiagnosticsRoot { get; set; } = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "X2DStartupStudio", "Logs");
-    public Func<Action<string>, Action<string>, IManagedCameraLink> LinkFactory { get; set; }
+    private Func<Action<string>, Action<string>, IManagedCameraLink> linkFactory=null!;
+    private bool defaultLink=true;
+    public Func<Action<string>, Action<string>, IManagedCameraLink> LinkFactory {get=>linkFactory;set {linkFactory=value;defaultLink=false;}}
+    private sealed record OperationResult(string DeviceTitle,string Edition,string Current,bool Guard,string? CleanupFailure,bool CanRestore,bool CanInstall,bool Gen2=false);
     public StartupImage? Output => prepared;
 
     private static TextBlock Text(string value, double size) => new() { Text = value, FontSize = size, TextWrapping = TextWrapping.Wrap, Foreground = new SolidColorBrush(Color.Parse("#606770")) };
@@ -41,7 +45,7 @@ public sealed class StudioWindow : Window
     private static void Put(Grid grid, Control c, int row, int col) { Grid.SetRow(c, row); Grid.SetColumn(c, col); grid.Children.Add(c); }
     public StudioWindow()
     {
-        LinkFactory = (log, trace) => new ManagedCameraLink(ResourcesPath, log, trace);
+        linkFactory = (log, trace) => new ManagedCameraLink(ResourcesPath, log, trace);
         Title = "Hasselblad Startup Studio · Windows " + BuildVersion; Width = 1260; Height = 800; MinWidth = 1080; MinHeight = 640;
         Background = new SolidColorBrush(Color.Parse("#F3F4F6")); FontFamily = new FontFamily("Microsoft YaHei UI, PingFang SC, sans-serif"); FontSize = 14;
         var layout = new Grid { RowDefinitions = new("Auto,Auto,*,Auto"), Margin = new Thickness(28), RowSpacing = 18 };
@@ -51,8 +55,12 @@ public sealed class StudioWindow : Window
         layout.VerticalAlignment = VerticalAlignment.Top;
         Opened += (_, _) => FitClient(); SizeChanged += (_, _) => FitClient();
         var heading = new Grid { ColumnDefinitions = new("Auto,*,Auto,Auto"), ColumnSpacing = 12 };
-        var icon = new Border { Width = 44, Height = 44, CornerRadius = new CornerRadius(11), Background = new SolidColorBrush(Color.Parse("#FAEADD")), Child = new TextBlock { Text = "▧", FontSize = 23, Foreground = new SolidColorBrush(Color.Parse("#D76B28")), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center } };
-        var intro = new StackPanel { Spacing = 3 }; intro.Children.Add(new TextBlock { Text = "开机画面", FontSize = 24, FontWeight = FontWeight.SemiBold }); intro.Children.Add(Text("Hasselblad X2D / 907X · CFV 100C", 12));
+        var iconPath = Path.Combine(AppContext.BaseDirectory, "Resources", "AppIcon.png");
+        Control iconContent = File.Exists(iconPath)
+            ? new Image { Source = new Bitmap(iconPath), Width = 44, Height = 44, Stretch = Avalonia.Media.Stretch.UniformToFill }
+            : new TextBlock { Text = "▧", FontSize = 23, Foreground = new SolidColorBrush(Color.Parse("#D76B28")), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+        var icon = new Border { Width = 44, Height = 44, CornerRadius = new CornerRadius(11), Background = new SolidColorBrush(Color.Parse("#FAEADD")), Child = iconContent, ClipToBounds = true };
+        var intro = new StackPanel { Spacing = 3 }; intro.Children.Add(new TextBlock { Text = "开机画面", FontSize = 24, FontWeight = FontWeight.SemiBold }); intro.Children.Add(Text("Hasselblad X2D / X2D II / 907X · CFV 100C", 12));
         var version = new Border { Padding = new Thickness(9, 5), CornerRadius = new CornerRadius(6), Background = new SolidColorBrush(Color.Parse("#E9EAED")), VerticalAlignment = VerticalAlignment.Center, Child = Text("测试版 " + BuildVersion, 11) };
         Connect.VerticalAlignment = VerticalAlignment.Center;
         Put(heading, icon, 0, 0); Put(heading, intro, 0, 1); Put(heading, version, 0, 2); Put(heading, Connect, 0, 3); Put(layout, heading, 0, 0);
@@ -168,6 +176,12 @@ public sealed class StudioWindow : Window
             {
                 var dir = DiagnosticsRoot; Directory.CreateDirectory(dir);
                 using var diagnostic = new StreamWriter(Path.Combine(dir, "session-" + Guid.NewGuid().ToString("N") + ".log")); diagnostic.AutoFlush = true;
+                var second=new Gen2Helper(ResourcesPath,BackupRoot,text=> {Log(text);Dispatcher.UIThread.Post(()=> {if(Volatile.Read(ref allowProgress)!=0)Status.Text=text;});},text=>diagnostic.WriteLine(text));
+                if(defaultLink && second.Probe())
+                {
+                    var state=second.Operate(operation,chosen);
+                    return new OperationResult(state.DeviceTitle,state.Edition,state.Current,false,null,state.CanRestore,state.CanInstall,true);
+                }
                 using var link = LinkFactory(Log, text => diagnostic.WriteLine(DateTime.Now.ToString("O") + " " + text));
                 var finishAttempted = false;
                 try
@@ -187,7 +201,7 @@ public sealed class StudioWindow : Window
                     string? cleanupFailure = null; finishAttempted = true;
                     try { link.Finish(); }
                     catch (StudioException finish) { cleanupFailure = finish.Message; diagnostic.WriteLine("操作已完成；收尾失败：" + finish.Message); }
-                    return (s, r, currentText, guard, cleanupFailure, installAllowed);
+                    return new OperationResult(s.CameraModel==Models.Cfv?"907X / CFV 100C":"X2D 100C",s.Edition,currentText,guard,cleanupFailure,r!=null,installAllowed);
                 }
                 catch (Exception e)
                 {
@@ -199,10 +213,10 @@ public sealed class StudioWindow : Window
             Interlocked.Exchange(ref allowProgress, 0);
             await Dispatcher.UIThread.InvokeAsync(() =>
             {
-                device.Text = (result.s.CameraModel == Models.Cfv ? "907X / CFV 100C" : "X2D 100C") + " · " + result.s.Edition; current.Text = result.currentText;
-                ready = result.cleanupFailure == null; canRestore = result.r != null; canInstall = result.installAllowed; Connect.Content = "重新检测"; progress.Value = 1;
-                Status.Text = CompletionStatus(operation, result.s.Edition, result.cleanupFailure);
-                note.Text = result.guard ? "扩展菜单每次开机只加载一次；换图或恢复后，需要完整关机再开机。" : "首次原厂备份已保留；重复换图不会覆盖首次备份。"; Log((result.cleanupFailure == null ? "完成：" : "操作完成，收尾待确认：") + Status.Text);
+                device.Text = result.DeviceTitle + " · " + result.Edition; current.Text = result.Current;
+                ready = result.CleanupFailure == null; canRestore = result.CanRestore; canInstall = result.CanInstall; Connect.Content = "重新检测"; progress.Value = 1;
+                Status.Text = CompletionStatus(operation, result.Edition, result.CleanupFailure);
+                note.Text = result.Guard ? "扩展菜单每次开机只加载一次；换图或恢复后，需要完整关机再开机。" : result.Gen2?"首次原图保存在机内和电脑；恢复后清理机内安装文件。":"首次原厂备份已保留；重复换图不会覆盖首次备份。"; Log((result.CleanupFailure == null ? "完成：" : "操作完成，收尾待确认：") + Status.Text);
             });
         }
         catch (Exception e)

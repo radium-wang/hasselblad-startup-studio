@@ -38,12 +38,59 @@ def pe(path):
     return machine, imports
 
 
+def group_icon_count(path):
+    data = path.read_bytes()
+    pe_at = struct.unpack_from('<I', data, 0x3c)[0]
+    optional = pe_at + 24
+    magic = struct.unpack_from('<H', data, optional)[0]
+    directory = optional + (112 if magic == 0x20b else 96)
+    resource_rva, resource_size = struct.unpack_from('<II', data, directory + 16)
+    assert resource_rva and resource_size, 'Missing PE resource directory'
+    sections = struct.unpack_from('<H', data, pe_at + 6)[0]
+    optional_size = struct.unpack_from('<H', data, pe_at + 20)[0]
+    table = optional + optional_size
+    mappings = []
+    for index in range(sections):
+        start = table + index * 40
+        virtual_size, virtual_address, raw_size, raw_at = struct.unpack_from('<IIII', data, start + 8)
+        mappings.append((virtual_address, max(virtual_size, raw_size), raw_at))
+    def offset(rva):
+        for start, size, raw_at in mappings:
+            if start <= rva < start + size:
+                return raw_at + rva - start
+        raise AssertionError('Unmapped PE resource RVA')
+    base = offset(resource_rva)
+    def entries(relative):
+        at = base + relative
+        named, ids = struct.unpack_from('<HH', data, at + 12)
+        return [(struct.unpack_from('<II', data, at + 16 + 8 * i)) for i in range(named + ids)]
+    icon_groups = 0
+    for name, child in entries(0):
+        if name & 0x80000000 or (name & 0xffff) != 14 or not child & 0x80000000:
+            continue
+        for _, named in entries(child & 0x7fffffff):
+            if not named & 0x80000000:
+                continue
+            for _, leaf in entries(named & 0x7fffffff):
+                if leaf & 0x80000000:
+                    continue
+                data_entry = base + (leaf & 0x7fffffff)
+                image_rva, image_size = struct.unpack_from('<II', data, data_entry)
+                image = data[offset(image_rva):offset(image_rva) + image_size]
+                reserved, kind, count = struct.unpack_from('<HHH', image)
+                assert reserved == 0 and kind == 1 and count > 0 and len(image) >= 6 + 14 * count, 'Invalid embedded Windows group icon'
+                icon_groups += 1
+    return icon_groups
+
+
 def audit(root):
     manifest = json.loads((root / 'package-manifest.json').read_text())
     expected = manifest['files']
     files = {p.relative_to(root).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest() for p in root.rglob('*') if p.is_file() and p.name != 'package-manifest.json'}
     assert expected == files, 'Manifest / file tree mismatch'
     assert manifest['target'] == 'win-x64' and not manifest['realWindowsValidated']
+    assert (root / 'Resources/AppIcon.png').is_file(), 'Missing Windows window-header icon'
+    assert group_icon_count(root / 'HasselbladStartupStudio.exe') > 0, 'Missing Windows executable icon resource'
     for name in ['HasselbladStartupStudio.exe', 'libusb-1.0.dll', 'coreclr.dll', 'hostfxr.dll', 'libSkiaSharp.dll', 'libHarfBuzzSharp.dll']:
         assert pe(root / name)[0] == 0x8664, 'Wrong x64 architecture: ' + name
     adb = root / 'Resources/bin'
@@ -52,7 +99,7 @@ def audit(root):
     assert all(pe(adb / n)[0] == adb_arch for n in ['AdbWinApi.dll', 'AdbWinUsbApi.dll'])
     assert (adb / 'NOTICE.txt').stat().st_size > 10000
     known_system = {'kernel32.dll', 'advapi32.dll', 'user32.dll', 'gdi32.dll', 'msvcrt.dll', 'shell32.dll', 'shlwapi.dll', 'ole32.dll', 'oleaut32.dll', 'ws2_32.dll', 'setupapi.dll', 'cfgmgr32.dll', 'winusb.dll', 'iphlpapi.dll', 'crypt32.dll', 'ntdll.dll', 'bcrypt.dll', 'version.dll', 'winmm.dll', 'comdlg32.dll', 'comctl32.dll', 'secur32.dll', 'dnsapi.dll', 'netapi32.dll', 'ucrtbase.dll', 'powrprof.dll', 'normaliz.dll', 'mswsock.dll', 'psapi.dll'}
-    known_system.update({'dbghelp.dll', 'fontsub.dll', 'bcryptprimitives.dll', 'dxgi.dll'})
+    known_system.update({'dbghelp.dll', 'fontsub.dll', 'bcryptprimitives.dll', 'dxgi.dll','rpcrt4.dll','propsys.dll'})
     for path in [root / 'libusb-1.0.dll', root / 'libSkiaSharp.dll', root / 'libHarfBuzzSharp.dll', root / 'av_libglesv2.dll', root / 'coreclr.dll', root / 'hostfxr.dll', adb / 'adb.exe', adb / 'AdbWinApi.dll', adb / 'AdbWinUsbApi.dll']:
         for dependency in pe(path)[1]:
             assert dependency in known_system or dependency.startswith(('api-ms-win-', 'ext-ms-win-')) or (path.parent / dependency).exists() or any(p.name.lower() == dependency for p in path.parent.iterdir()), 'Missing non-system dependency: ' + dependency
@@ -64,7 +111,7 @@ def audit(root):
     adapter = json.loads((root / 'Resources/adapter.json').read_text())
     assert adapter['mode'] == 3 and not adapter['factoryIdentityWrite'] and not adapter['environmentWrite']
     assert len((root / 'Resources/patch.bin').read_bytes()) == sum(p['size'] for p in adapter['patches'])
-    if manifest['version'].startswith('0.3.0-rgb'):
+    if manifest['version'].startswith(('0.3.0-rgb','0.4.0-gen2')):
         assert (root / 'USB识别诊断.cmd').is_file()
         assert adapter['adapterSHA256'] == '768b6f5d53cccbd6db90b053f1614d7de363462c4ed360ee8ffd10c0611d14ef'
         legacy_hash = 'a2edfe28ad8dbf91ed19fb87526cc6eceb21ceb00a40347ee58e9afaec6929e0'
@@ -72,6 +119,16 @@ def audit(root):
         legacy = json.loads((legacy_root / 'adapter.json').read_text())
         assert legacy['adapterSHA256'] == legacy_hash and legacy['originalSHA256'] == adapter['originalSHA256']
         assert len((legacy_root / 'patch.bin').read_bytes()) == sum(p['size'] for p in legacy['patches'])
+    if manifest['version'].startswith('0.4.0-gen2'):
+        helper=root/'Resources/gen2'
+        for name in ('g2profile.py','main.py','core.py','scripts.py','codec.py','transport.py','winusb.py','adb.py','Runtime-changes.txt','Licenses/sources.json','runtime/LICENSE.txt'):
+            assert (helper/name).is_file(),'Missing Gen2 component: '+name
+        for path in (helper/'runtime').iterdir():
+            if path.suffix in ('.exe','.dll','.pyd'):
+                assert pe(path)[0]==0x8664,'Wrong Python runtime architecture'
+                for dependency in pe(path)[1]:
+                    assert dependency in known_system or dependency.startswith(('api-ms-win-','ext-ms-win-')) or any(p.name.lower()==dependency for p in path.parent.iterdir()),'Missing Python dependency: '+dependency
+        assert (helper/'runtime/python313._pth').read_text().splitlines()==['python313.zip','.','..']
     licenses = root / 'Licenses'
     for name in ['Avalonia-MIT.txt', 'dotnet-MIT.txt', 'dotnet-THIRD-PARTY-NOTICES.txt', 'libusb-LGPL-2.1.txt', 'libusb-1.0.29.tar.bz2', 'SkiaSharp-LICENSE.txt', 'HarfBuzzSharp-LICENSE.txt', 'ANGLE-LICENSE.txt', 'libusb-重建说明.txt']:
         assert (licenses / name).stat().st_size > 100, 'Missing license / source material: ' + name

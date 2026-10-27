@@ -1,0 +1,32 @@
+{
+  "XZ-5.2.3-COPYING.txt": {
+    "url": "https://raw.githubusercontent.com/tukaani-project/xz/v5.2.3/COPYING",
+    "member": null,
+    "sourceArchiveSHA256": null,
+    "sha256": "c4f8e14fafe458d84808a4cd8b69f94673ebe2bf8fc992291629a69ac12218f8"
+  },
+  "Python-3.13.15-incorporated.txt": {
+    "url": "https://raw.githubusercontent.com/python/cpython/v3.13.15/Doc/license.rst",
+    "member": null,
+    "sourceArchiveSHA256": null,
+    "sha256": "952ac05720d7f1dcb63589b35eb0931b1442eb250230a4ad31198eddf0ad6abc"
+  },
+  "OpenSSL-3.0.21-LICENSE.txt": {
+    "url": "https://raw.githubusercontent.com/openssl/openssl/openssl-3.0.21/LICENSE.txt",
+    "member": null,
+    "sourceArchiveSHA256": null,
+    "sha256": "7d5450cb2d142651b8afa315b5f238efc805dad827d91ba367d8516bc9d49e7a"
+  },
+  "libmpdec-4.0.1-COPYRIGHT.txt": {
+    "url": "https://www.bytereef.org/software/mpdecimal/releases/mpdecimal-4.0.1.tar.gz",
+    "member": "mpdecimal-4.0.1/COPYRIGHT.txt",
+    "sourceArchiveSHA256": "96d33abb4bb0070c7be0fed4246cd38416188325f820468214471938545b1ac8",
+    "sha256": "dba079e24a0286052f9f36a5e0b4f6cc95bc83ada657eb26bef8c0b6473f6512"
+  },
+  "NCurses-6.5-COPYING.txt": {
+    "url": "https://invisible-island.net/archives/ncurses/ncurses-6.5.tar.gz",
+    "member": "ncurses-6.5/COPYING",
+    "sourceArchiveSHA256": "136d91bc269a9a5785e5f9e980bc76ab57428f604ce3e5a5a90cebc767971cc6",
+    "sha256": "b2feb54f39529abe226f709a292584fde48a2e5721559fee417d2cdd51cb7cc1"
+  }
+}

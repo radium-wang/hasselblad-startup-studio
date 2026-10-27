@@ -12,4 +12,5 @@ jobs:
           python-version: '3.11'
       - run: python3 tools/check_source.py
       - run: python3 CodeTests/check_source_tools.py
-      - run: python3 -m compileall -q native tools CodeTests
+      - run: python3 -m compileall -q native tools CodeTests gen2
+      - run: python3 CodeTests/check_gen2.py --report outputs/gen2-offline.json

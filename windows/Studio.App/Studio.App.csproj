@@ -5,14 +5,16 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <AssemblyName>HasselbladStartupStudio</AssemblyName>
-    <Version>0.3.0</Version>
-    <InformationalVersion>0.3.0-rgb-preview.5</InformationalVersion>
+    <ApplicationIcon>../../assets/app-icon/AppIcon.ico</ApplicationIcon>
+    <Version>0.4.0</Version>
+    <InformationalVersion>0.4.0-gen2-preview.1</InformationalVersion>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <PublishTrimmed>false</PublishTrimmed>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../Studio.Core/Studio.Core.csproj" />
+    <Content Include="../../assets/app-icon/AppIcon.png" Link="Resources/AppIcon.png" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <PackageReference Include="Avalonia.Desktop" Version="12.1.4" />
     <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.4" />
   </ItemGroup>

@@ -17,6 +17,10 @@ Commons Clause 不适用于这些第三方组件；它们继续遵循各自的�
 | SkiaSharp 3.119.4 / Skia | Windows 图片解码、灰度 PNG 与绘制；相应 MIT / BSD 等通知随包提供 |
 | HarfBuzzSharp 8.3.1.3 / HarfBuzz | 文字排版；相应通知随 Windows 包提供 |
 | ANGLE | Windows 图形后端；对应 BSD 及第三方通知随包提供 |
+| CPython 3.13.15 | 二代共享引擎的内置运行库；PSF 及所含组件许可，Windows 使用固定哈希的官方 x64 embed，Mac 使用可重定位 Universal 输入；原许可、第三方通知和打包修改摘要随包保留 |
+| PyUSB 1.3.1 | Mac 二代 CTRL 接口；保留其 BSD 许可，Windows 二代直接使用系统 WinUSB |
+
+二代运行库的公开许可输入位于 `assets/python-licenses`，来源 URL 与文本 SHA-256 在 `sources.json`。Python 安装发行版中的原始许可另随打包输入复制；通知涵盖 OpenSSL、NCurses、XZ、libmpdec 等所含组件。构建会重定位 Mac 动态库登记路径并移除无用的重复 libusb，保留运行库修改摘要。参见 [Python 官方许可说明](https://docs.python.org/3.13/license.html)。
 
 Windows 0.2.0-preview.1 使用官方 libusb 1.0.29 MinGW64 DLL，动态加载并可替换。
 包内 `Licenses` 包含 LGPL 通知、对应 libusb 原始源码与重建说明；应用许可不限制修改 libusb 后的调试、替换或 LGPL 权利。

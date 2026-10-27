@@ -121,6 +121,7 @@ func readableFailure(_ message:String) -> String {
 final class StudioModel:ObservableObject {
     @Published var source:GrayImage?;@Published var crop=CGRect.zero;@Published var shouldCrop=false;@Published var useColor=true;@Published var filename="未导入图片"
     @Published var snapshot:CameraSnapshot?;@Published var canRestore=false;@Published var canInstall=false;@Published var current="等待连接相机"
+    @Published var gen2Title:String?
     @Published var busy=false;@Published var progress=0.0;@Published var status="导入图片预览，或连接相机检查"
     @Published var logs=[DiagnosticEntry(message:"已准备好，请连接相机")]
     func appendLog(_ message:String) {
@@ -153,6 +154,17 @@ final class StudioModel:ObservableObject {
             var activeLink:ManagedCameraLink?
             let diagnostics=DiagnosticFile()
             do {
+                let second=Gen2Host(resources:resources,backups:backupRoot,log:{text in self.appendLog(text);DispatchQueue.main.async {self.status=text}},trace:{diagnostics.append($0)})
+                if try second.probe() {
+                    if operation==1 && chosen==nil {throw StudioError("请先导入图片。")}
+                    let s=try second.operate(operation,image:chosen)
+                    DispatchQueue.main.async {
+                        self.snapshot=nil;self.gen2Title=s.deviceTitle+" · "+s.edition;self.canRestore=s.canRestore;self.canInstall=s.canInstall;self.current=s.current;self.ready=true;self.busy=false;self.progress=1
+                        self.status=operation==0 ? "相机检查完成":operation==1 ? "安装完成，请完整关机再开机确认画面":"原厂开机画面已恢复，机内安装文件已清理"
+                        self.appendLog("完成："+self.status)
+                    }
+                    return
+                }
                 let link=try ManagedCameraLink(resources:resources,log:{self.appendLog($0)},trace:{diagnostics.append($0)})
                 activeLink=link
                 let controller=try CameraController(link:link,resources:resources,backupRoot:backupRoot)
@@ -175,7 +187,7 @@ final class StudioModel:ObservableObject {
                 } else if r != nil {current="原厂画面 · 待清理安装记录"}
                 try link.finish();activeLink=nil
                 DispatchQueue.main.async {
-                    self.snapshot=s;self.canRestore=r != nil;self.canInstall=r == nil || r?.adapterHash==controller.adapter.adapterSHA256;self.current=current;self.ready=true;self.busy=false;self.progress=1
+                    self.snapshot=s;self.gen2Title=nil;self.canRestore=r != nil;self.canInstall=r == nil || r?.adapterHash==controller.adapter.adapterSHA256;self.current=current;self.ready=true;self.busy=false;self.progress=1
                     self.status=operation==0 ? "相机检查完成":operation==1 ? "安装完成，请关机再开机确认画面":"已恢复"+s.edition+"原厂画面，请重启后重新检测"
                     self.appendLog("完成："+self.status+"；"+s.edition+"，"+current)
                 }
@@ -194,6 +206,7 @@ struct StudioView:View {
     @StateObject var model=StudioModel()
     private let accent=Color(red:0.89,green:0.43,blue:0.14)
     private var panel:Color {Color(nsColor:.controlBackgroundColor)}
+    private var appIcon: NSImage? { Bundle.main.url(forResource:"AppIcon",withExtension:"png").flatMap { NSImage(contentsOf:$0) } }
     private func card<Content:View>(@ViewBuilder _ content:()->Content)->some View {
         content().padding(18).frame(maxWidth:.infinity,maxHeight:.infinity,alignment:.topLeading)
             .background(panel).clipShape(RoundedRectangle(cornerRadius:14))
@@ -202,23 +215,28 @@ struct StudioView:View {
     var body:some View {
         VStack(alignment:.leading,spacing:18) {
             HStack(spacing:12) {
-                Image(systemName:"camera.viewfinder").font(.system(size:25,weight:.medium)).foregroundColor(accent)
-                    .frame(width:48,height:48).background(accent.opacity(0.09)).cornerRadius(12)
+                if let appIcon {
+                    Image(nsImage:appIcon).resizable().interpolation(.high).scaledToFill()
+                        .frame(width:48,height:48).clipShape(RoundedRectangle(cornerRadius:12))
+                } else {
+                    Image(systemName:"camera.viewfinder").font(.system(size:25,weight:.medium)).foregroundColor(accent)
+                        .frame(width:48,height:48).background(accent.opacity(0.09)).cornerRadius(12)
+                }
                 VStack(alignment:.leading,spacing:4) {
                     Text("开机画面").font(.system(size:23,weight:.semibold))
-                    Text("Hasselblad X2D / 907X · CFV 100C").font(.system(size:12)).foregroundColor(.secondary)
+                    Text("Hasselblad X2D / X2D II / 907X · CFV 100C").font(.system(size:12)).foregroundColor(.secondary)
                 }
                 Spacer()
-                Text("测试版 0.3.0-rgb-preview.5").font(.system(size:11,weight:.medium)).foregroundColor(.secondary)
+                Text("测试版 0.4.0-gen2-preview.1").font(.system(size:11,weight:.medium)).foregroundColor(.secondary)
                     .padding(.horizontal,10).padding(.vertical,6).background(Color.primary.opacity(0.04)).cornerRadius(6)
-                Button(model.snapshot == nil ? "连接相机":"重新检测") {model.perform(0)}.controlSize(.large).disabled(model.busy)
+                Button(model.snapshot == nil && model.gen2Title == nil ? "连接相机":"重新检测") {model.perform(0)}.controlSize(.large).disabled(model.busy)
             }
             HStack(spacing:22) {
                 HStack(spacing:10) {
                     Circle().fill(model.ready ? Color.green:Color.gray.opacity(0.5)).frame(width:7,height:7)
                     VStack(alignment:.leading,spacing:4) {
                         Text("相机版本").font(.system(size:11)).foregroundColor(.secondary)
-                        Text(model.snapshot.map {$0.cameraModel.title+" · "+$0.edition} ?? "等待连接").font(.system(size:13,weight:.medium))
+                        Text(model.gen2Title ?? model.snapshot.map {$0.cameraModel.title+" · "+$0.edition} ?? "等待连接").font(.system(size:13,weight:.medium))
                     }
                 }.frame(maxWidth:.infinity,alignment:.leading)
                 Rectangle().fill(Color.primary.opacity(0.09)).frame(width:1,height:30)
@@ -318,7 +336,7 @@ struct StudioView:View {
                 VStack(alignment:.leading,spacing:6) {
                     Text(model.status).font(.system(size:12,weight:.medium)).lineLimit(2)
                     if model.busy {ProgressView(value:model.progress).frame(maxWidth:320)}
-                    else {Text(model.snapshot.map {"恢复将复原为这台相机的"+$0.edition+"原厂画面。"} ?? "连接后检测原厂版本，首次恢复备份保留在这台 Mac。")
+                    else {Text(model.gen2Title != nil ? "首次原图备份保存在机内和电脑；恢复后清理机内安装文件。":model.snapshot.map {"恢复将复原为这台相机的"+$0.edition+"原厂画面。"} ?? "连接后检测原厂版本，首次恢复备份保留在这台 Mac。")
                         .font(.system(size:11)).foregroundColor(.secondary).lineLimit(2)}
                 }
                 Spacer(minLength:10)

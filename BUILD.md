@@ -1,7 +1,7 @@
 # 独立构建与离线验证
 
-Windows 0.2.0-preview.1 的完整构建、驱动与测试边界见 [Windows 文档](research/WINDOWS.md)。
-Windows 使用 .NET 10 / Avalonia，沿用同一模式 3 相机适配层与恢复记录格式。
+Windows 的构建、驱动与测试边界见 [Windows 文档](research/WINDOWS.md)。
+Windows 使用 .NET 10 / Avalonia，一代沿用同一模式 3 适配层与记录；二代使用两端共用的 `gen2/` 引擎。
 
 当前 Mac / Windows RGB 测试版需要同时生成 `--rgb` 适配层和原样历史灰度适配层，并通过 `--legacy-adapter` 打入后者。不能将 RGB 资源交给旧版灰度读取器，完整方法与证据见 [RGB 构建及恢复说明](research/WINDOWS_RGB.md)。
 
@@ -23,7 +23,7 @@ python3 -m compileall -q tools CodeTests
 
 ## 准备输入
 
-Python 依赖只用于构建及模拟，不进入 App：
+一代的 ELF／模拟依赖只用于构建及模拟；二代另内置独立 Python 运行库，用户不需要安装。开发依赖：
 
 ```sh
 python3 -m venv .venv
@@ -73,13 +73,28 @@ python3 tools/build_mac.py \
   --legacy-adapter outputs/legacy-adapter \
   --libusb "$STARTUP_USB_LIBRARY" --libusb-license "$STARTUP_USB_LICENSE" \
   --usb-include "$STARTUP_USB_HEADERS" \
-  --adb "$STARTUP_ADB" --adb-license "$STARTUP_ADB_LICENSE"
+  --adb "$STARTUP_ADB" --adb-license "$STARTUP_ADB_LICENSE" \
+  --gen2-runtime inputs/python313-universal-runtime \
+  --gen2-python-license inputs/Python-installer.rtf \
+  --pyusb inputs/usb --pyusb-license inputs/PyUSB-license.txt
 ```
 
 默认输出 `outputs/macOS-Universal/X2D Startup Studio.app`。
 分别编译两个架构，合并主程序，内置 libusb／ADB 与通知，进行本地临时签名，再审查所有 Mach-O。
 App 不依赖用户安装 Homebrew，启动不会自动连接相机。当前 bundle identifier 与旧版保持一致，以保留首次备份兼容。
 不要覆写正在运行的 App；可用 `--output` 指定另一个本地目录。
+
+二代需要可重定位的 Python 3.13.15 Universal 运行库（`bin/python3.13`、`lib/Python`、标准库及扩展）；所有 Mach-O 都必须满足同一双架构和最低系统检查。PyUSB 1.3.1 源包只复制 `usb/` 及对应许可。上述输入和依赖二进制不进入源码仓库。Windows 构建新增 `--gen2-python-zip inputs/python-3.13.15-embed-amd64.zip`，必须匹配 SHA-256 `d1f04d990aee1253d8569e8e5104e30fa9f5fa830899f14843448872d936a2cf`；可用 `--nuget-source` 指定本地离线 feed。
+
+二代完整离线事务检查（可选提供原厂原图，默认使用合成内容，不连接设备）：
+
+```sh
+python3 CodeTests/check_gen2.py --report outputs/gen2-offline.json
+python3 CodeTests/check_gen2.py --original inputs/original-logo.bin --report outputs/gen2-official-input.json
+python3 CodeTests/check_gen2_runtime.py "outputs/macOS-Universal/X2D Startup Studio.app" --report outputs/gen2-runtime.json
+```
+
+两种输入都执行相同控制器和实际生成的脚本；UID、SELinux 及 USB 仍为替身。实机验收边界见 [二代适配说明](research/GEN2.md)。
 
 ## USB 替身检查
 

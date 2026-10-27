@@ -38,8 +38,46 @@ public static class Program
             return;
         }
         using var mutex = new Mutex(true, "HasselbladStartupStudio-Windows", out var acquired);
-        if (!acquired) return;
+        if (!acquired) { Environment.ExitCode = 2; return; }
+        if (args.Contains("--transfer-diagnostics"))
+        {
+            RunTransferDiagnostic();
+            return;
+        }
         BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
+    }
+    private static void RunTransferDiagnostic()
+    {
+        var folder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "X2DStartupStudio", "Logs", "transfer-diagnostics");
+        try
+        {
+            Directory.CreateDirectory(folder);
+            using var report = new StreamWriter(Path.Combine(folder, "result.txt"), false, new System.Text.UTF8Encoding(true)) { AutoFlush = true };
+            void Log(string text) => report.WriteLine(DateTime.Now.ToString("O") + " " + text);
+            var version = typeof(Program).Assembly.GetCustomAttributes(typeof(System.Reflection.AssemblyInformationalVersionAttribute), false)
+                .Cast<System.Reflection.AssemblyInformationalVersionAttribute>().Single().InformationalVersion.Split('+')[0];
+            Log("Version=" + version + "; read-only transfer diagnostic; runtime USB mode may change");
+            try
+            {
+                Log("Before=" + WindowsUsbDiagnostics.Collect(version));
+                var resources = Path.Combine(AppContext.BaseDirectory, "Resources");
+                using var link = new ManagedCameraLink(resources, Log, Log);
+                var controller = new CameraController(link, resources, Path.Combine(folder, "unused-backup"));
+                TransferDiagnostic.Run(controller, link, Log);
+                Log("RESULT=PASS");
+            }
+            catch (Exception e)
+            {
+                Environment.ExitCode = 1;
+                Log("RESULT=FAIL " + AdbDiagnosticText.Sanitize(e.Message, []));
+            }
+            finally
+            {
+                try { Log("After=" + WindowsUsbDiagnostics.Collect(version)); }
+                catch { Log("After snapshot unavailable"); }
+            }
+        }
+        catch { Environment.ExitCode = 1; }
     }
     public static AppBuilder BuildAvaloniaApp() => AppBuilder.Configure<StudioApplication>().UsePlatformDetect();
 }
